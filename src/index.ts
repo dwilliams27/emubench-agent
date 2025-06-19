@@ -1,4 +1,7 @@
 import { EmuAgent } from "@/agent";
+import { configDotenv } from "dotenv";
+
+configDotenv();
 
 const mcpEndpoint = process.env.MCP_SERVER_ENDPOINT;
 const mcpSessionId = process.env.MCP_SESSION_ID;
