@@ -1,0 +1,24 @@
+{
+  "name": "emubench-agent",
+  "version": "1.0.0",
+  "description": "Configurable agent used for benchmarking models via `emubench`.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^24.0.3",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^1.2.12",
+    "@ai-sdk/google": "^1.2.19",
+    "@ai-sdk/openai": "^1.3.22",
+    "@modelcontextprotocol/sdk": "^1.13.0",
+    "ai": "^4.3.16"
+  }
+}
