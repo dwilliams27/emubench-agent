@@ -1,0 +1,27 @@
+{
+  "agentConfig": {
+    "systemPrompt": "You are an extremely competent video game playing agent. You will be given a task and tools to interact with a game. Complete the objective.",
+    "llmProvider": "openai",
+    "model": "gpt-4o",
+    "maxIterations": 1,
+    "temperature": 1,
+    "mcpServerEndpoint": "https://api.emubench.com/mcp",
+    "task": {
+      "name": "Take a screenshot",
+      "description": "Take a screenshot and describe everything you see."
+    }
+  },
+  "testConfig": {
+    "id": "tst-1234",
+    "gameId": "G4AEE9",
+    "platform": "gamecube",
+    "startStateFilename": "new_game_beginning.sav",
+    "contextMemWatches": {
+      "test_game_id": {
+        "address": "80000000",
+        "size": 6
+      }
+    },
+    "endStateMemWatches": []
+  }
+}

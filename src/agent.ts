@@ -1,54 +1,46 @@
+import { AgentConfig, BenchmarkResult, BootConfig, EmuTestConfig } from '@/types';
 import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { generateText } from 'ai';
+import { generateText, tool } from 'ai';
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
 import path from 'path';
-
-export interface AgentConfig {
-  systemPrompt: string;
-  llmProvider: 'openai' | 'anthropic' | 'google';
-  model: string;
-  maxIterations: number;
-  temperature: number;
-  mcpServerEndpoint: string;
-  // TODO: Rethink structure, base on TestConfig
-  testConfig: {
-    id: string;
-    name: string;
-    description: string;
-    successCriteria: string[];
-    visualCues: string[];
-  };
-}
-
-// TODO
-export interface BenchmarkResult {
-  success: boolean;
-}
+import z from 'zod';
 
 export class EmuAgent {
   private mcpClient: Client;
   private transport: StreamableHTTPClientTransport;
+  private agentConfig: AgentConfig;
+  private testConfig: EmuTestConfig;
 
   constructor(
-    private config: AgentConfig,
-    private mcpEndpoint: string,
+    private bootConfig: BootConfig,
+    private authToken: string,
     private mcpSessionId: string,
     private testStatePath: string,
   ) {
-    if (!this.config.systemPrompt) {
+    this.agentConfig = bootConfig.agentConfig;
+    this.testConfig = bootConfig.testConfig;
+
+    if (!this.agentConfig.systemPrompt) {
       throw new Error('System prompt is required');
     }
-    if (!this.config.llmProvider || !['openai', 'anthropic', 'google'].includes(this.config.llmProvider)) {
+    if (!this.agentConfig.llmProvider || !['openai', 'anthropic', 'google'].includes(this.agentConfig.llmProvider)) {
       throw new Error('Invalid or missing LLM provider');
     }
-    if (!this.config.model) {
+    if (!this.agentConfig.model) {
       throw new Error('Model is required');
     }
-    this.transport = new StreamableHTTPClientTransport(new URL(this.mcpEndpoint), { sessionId: this.mcpSessionId });
+
+    const requestInit = {
+      headers: {
+        "Authorization": `Bearer ${this.authToken}`,
+        "emu-session-id": this.mcpSessionId,
+      }
+    };
+    this.transport = new StreamableHTTPClientTransport(new URL(this.agentConfig.mcpServerEndpoint), { requestInit });
     this.mcpClient = new Client({ name: 'emubench-agent', version: '1.0.0' }, { capabilities: {} });
   }
 
@@ -79,7 +71,7 @@ export class EmuAgent {
     return files.map(f => path.join(screenshotPath, f.name));
   }
 
-  async callLLMWithVision(prompt: string, toolCalls?: any[]): Promise<any> {
+  async callLLMWithVision(prompt: string, mcpTools?: any[]): Promise<any> {
     const screenshots = await this.getLatestScreenshots();
     
     const images = screenshots.map(path => ({
@@ -87,14 +79,15 @@ export class EmuAgent {
       image: readFileSync(path)
     }));
     
-    const model = this.getModel(this.config.llmProvider, this.config.model);
+    const model = this.getModel(this.agentConfig.llmProvider, this.agentConfig.model);
+    const tools = mcpTools ? this.convertMCPToolsToAISDKTools(mcpTools) : undefined;
     
     return await generateText({
       model,
       messages: [
         {
           role: 'system',
-          content: this.config.systemPrompt
+          content: this.agentConfig.systemPrompt
         },
         {
           role: 'user',
@@ -104,9 +97,9 @@ export class EmuAgent {
           ]
         }
       ],
-      tools: toolCalls ? this.convertMCPToolsToAISDK(toolCalls) : undefined,
+      tools,
       maxTokens: 4000,
-      temperature: this.config.temperature
+      temperature: this.agentConfig.temperature
     });
   }
 
@@ -117,12 +110,7 @@ export class EmuAgent {
 
   buildContextualPrompt(gameState: any, iteration: number): string {
     // TODO
-    return `Iteration ${iteration}:\n` +
-           `Game State: ${JSON.stringify(gameState)}\n` +
-           `Task: ${this.config.testConfig.name}\n` +
-           `Description: ${this.config.testConfig.description}\n` +
-           `Visual Cues: ${this.config.testConfig.visualCues.join(', ')}\n` +
-           `Success Criteria: ${this.config.testConfig.successCriteria.join(', ')}\n`;
+    return `Take a screenshot of the current game state and analyze it.`;
   }
 
   async checkTaskCompletion(responseText: string): Promise<boolean> {
@@ -136,17 +124,21 @@ export class EmuAgent {
   }
   
   async runBenchmark(): Promise<boolean> {
+    console.log('Starting benchmark...');
     await this.initializeMcpClient();
+    console.log('MCP client initialized');
 
     let iteration = 0;
     const history = [];
     
-    while (iteration < this.config.maxIterations) {
+    while (iteration < this.agentConfig.maxIterations) {
+      console.log(`Iteration ${iteration + 1}/${this.agentConfig.maxIterations}`);
       // TODO: Typing?
-      const mcpTools = await this.mcpClient.listTools() as unknown as any[];
+      const mcpTools = (await this.mcpClient.listTools())?.tools;
       const gameState = await this.getGameState();
       const prompt = this.buildContextualPrompt(gameState, iteration);
 
+      console.log(`Prompt for iteration ${iteration + 1}:`, prompt);
       const response = await this.callLLMWithVision(prompt, mcpTools);
       
       history.push({
@@ -158,6 +150,7 @@ export class EmuAgent {
       
       // Execute tool calls if any
       if (response.toolCalls && response.toolCalls.length > 0) {
+        console.log(`Executing ${response.toolCalls.length} tool calls...`);
         for (const toolCall of response.toolCalls) {
           const result = await this.mcpClient.callTool({
             name: toolCall.toolName,
@@ -182,6 +175,7 @@ export class EmuAgent {
       
       iteration++;
     }
+    console.log('Benchmark completed after', iteration + 1, 'iterations');
     
     const result = this.generateBenchmarkResult(history);
     const resultFilePath = path.join(this.testStatePath, 'result.json');
@@ -190,13 +184,59 @@ export class EmuAgent {
     return true;
   }
   
-  convertMCPToolsToAISDK(mcpTools: any[]) {
-    return mcpTools.reduce((acc, tool) => {
-      acc[tool.name] = {
-        description: tool.description,
-        parameters: tool.inputSchema
-      };
-      return acc;
-    }, {});
+  convertMCPToolsToAISDKTools(mcpTools: any[]) {
+    const toolsObject: Record<string, any> = {};
+    
+    mcpTools.forEach(mcpTool => {
+      toolsObject[mcpTool.name] = tool({
+        description: mcpTool.description,
+        parameters: this.jsonSchemaToZodSchema(mcpTool.inputSchema),
+        execute: async (args: any) => {
+          return { toolName: mcpTool.name, args };
+        }
+      });
+    });
+    
+    return toolsObject;
+  }
+
+  private jsonSchemaToZodSchema(schema: any): z.ZodType {
+    if (schema.type === 'object') {
+      const shape: Record<string, z.ZodType> = {};
+      
+      if (schema.properties) {
+        Object.entries(schema.properties).forEach(([key, prop]: [string, any]) => {
+          let zodType = this.jsonSchemaToZodSchema(prop);
+          
+          // Make field optional if not in required array
+          if (!schema.required?.includes(key)) {
+            zodType = zodType.optional();
+          }
+          
+          shape[key] = zodType;
+        });
+      }
+      
+      return z.object(shape);
+    }
+    
+    switch (schema.type) {
+      case 'string':
+        let stringSchema = z.string();
+        if (schema.enum) {
+          return z.enum(schema.enum);
+        }
+        return stringSchema;
+      case 'number':
+        return z.number();
+      case 'integer':
+        return z.number().int();
+      case 'boolean':
+        return z.boolean();
+      case 'array':
+        return z.array(this.jsonSchemaToZodSchema(schema.items || {}));
+      default:
+        return z.any();
+    }
   }
 }
