@@ -1,4 +1,4 @@
-import { AgentConfig, BenchmarkResult, BootConfig, EmuTestConfig } from '@/types';
+import { EmuAgentConfig, BenchmarkResult, EmuBootConfig, EmuTestConfig } from '@/types';
 import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
@@ -12,11 +12,11 @@ import z from 'zod';
 export class EmuAgent {
   private mcpClient: Client;
   private transport: StreamableHTTPClientTransport;
-  private agentConfig: AgentConfig;
+  private agentConfig: EmuAgentConfig;
   private testConfig: EmuTestConfig;
 
   constructor(
-    private bootConfig: BootConfig,
+    private bootConfig: EmuBootConfig,
     private authToken: string,
     private mcpSessionId: string,
     private testStatePath: string,
@@ -72,6 +72,7 @@ export class EmuAgent {
   }
 
   async callLLMWithVision(prompt: string, mcpTools?: any[]): Promise<any> {
+    console.log('Calling LLM with vision...');
     const screenshots = await this.getLatestScreenshots();
     
     const images = screenshots.map(path => ({
@@ -137,6 +138,7 @@ Description: ${this.agentConfig.task.description}
       console.log(`Iteration ${iteration + 1}/${this.agentConfig.maxIterations}`);
       // TODO: Typing?
       const mcpTools = (await this.mcpClient.listTools())?.tools;
+      console.log(`Found ${mcpTools.length} tools`);
       const gameState = await this.getGameState();
       const prompt = this.buildContextualPrompt();
 
@@ -167,8 +169,8 @@ Description: ${this.agentConfig.task.description}
           });
         }
         
-        // Wait a bit for game state to update
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // TODO: Needed?
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
       
       // Check if task completed

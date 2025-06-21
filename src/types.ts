@@ -4,8 +4,8 @@ export interface MemoryWatch {
   size: number; // Size in bytes
 }
 
-export interface BootConfig {
-  agentConfig: AgentConfig;
+export interface EmuBootConfig {
+  agentConfig: EmuAgentConfig;
   testConfig: EmuTestConfig;
 };
 
@@ -23,7 +23,7 @@ export interface EmuTask {
   description: string;
 }
 
-export interface AgentConfig {
+export interface EmuAgentConfig {
   systemPrompt: string;
   llmProvider: 'openai' | 'anthropic' | 'google';
   model: string;
@@ -39,7 +39,7 @@ export interface BenchmarkResult {
 }
 
 export interface EmuTestState {
-  state: 'booting' | 'ready' | 'running' | 'finished';
+  state: 'booting' | 'emulator-ready' | 'server-ready' | 'running' | 'finished';
 }
 
 export interface EmuTestMemoryState {

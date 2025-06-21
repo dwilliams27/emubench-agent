@@ -1,5 +1,5 @@
 import { EmuAgent } from "@/agent";
-import { BootConfig, EmuTestState } from "@/types";
+import { EmuBootConfig, EmuTestState } from "@/types";
 import { configDotenv } from "dotenv";
 import { readFileSync } from 'fs';
 import path from "path";
@@ -20,21 +20,21 @@ while (!testReady) {
   try {
     const testStateContent = readFileSync(path.join(testPath, 'test_state.json'), 'utf-8');
     const emuTestState = JSON.parse(testStateContent) as EmuTestState;
-    if (emuTestState.state === 'ready') {
+    if (emuTestState.state === 'server-ready') {
       console.log('Test ready!');
       testReady = true;
     } else {
-      console.log('Waiting for test to be ready...');
+      console.log(`Waiting for test to be ready; current status: ${emuTestState.state}`);
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   } catch (error) {
-    console.error('Error reading test state:', error);
+    console.error('Test file not found yet...');
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
 }
 
 const configContent = readFileSync(path.join(testPath, 'test_config.json'), 'utf-8');
-const bootConfig = JSON.parse(configContent) as BootConfig;
+const bootConfig = JSON.parse(configContent) as EmuBootConfig;
 
 const agent = new EmuAgent(
   bootConfig,
