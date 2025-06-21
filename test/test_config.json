@@ -3,7 +3,7 @@
     "systemPrompt": "You are an extremely competent video game playing agent. You will be given a task and tools to interact with a game. Complete the objective.",
     "llmProvider": "openai",
     "model": "gpt-4o",
-    "maxIterations": 1,
+    "maxIterations": 5,
     "temperature": 1,
     "mcpServerEndpoint": "https://api.emubench.com/mcp",
     "task": {
@@ -12,7 +12,7 @@
     }
   },
   "testConfig": {
-    "id": "tst-1234",
+    "id": "tst-4a391857df15465d",
     "gameId": "G4AEE9",
     "platform": "gamecube",
     "startStateFilename": "new_game_beginning.sav",

@@ -108,9 +108,11 @@ export class EmuAgent {
     return {};
   }
 
-  buildContextualPrompt(gameState: any, iteration: number): string {
+  buildContextualPrompt(): string {
     // TODO
-    return `Take a screenshot of the current game state and analyze it.`;
+    return `Task: ${this.agentConfig.task.name}
+Description: ${this.agentConfig.task.description}
+    `;
   }
 
   async checkTaskCompletion(responseText: string): Promise<boolean> {
@@ -136,7 +138,7 @@ export class EmuAgent {
       // TODO: Typing?
       const mcpTools = (await this.mcpClient.listTools())?.tools;
       const gameState = await this.getGameState();
-      const prompt = this.buildContextualPrompt(gameState, iteration);
+      const prompt = this.buildContextualPrompt();
 
       console.log(`Prompt for iteration ${iteration + 1}:`, prompt);
       const response = await this.callLLMWithVision(prompt, mcpTools);

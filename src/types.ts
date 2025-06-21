@@ -40,6 +40,9 @@ export interface BenchmarkResult {
 
 export interface EmuTestState {
   state: 'booting' | 'ready' | 'running' | 'finished';
+}
+
+export interface EmuTestMemoryState {
   contextMemWatchValues: Record<string, string>;
   endStateMemWatchValues: Record<string, string>;
 }

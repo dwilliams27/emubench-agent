@@ -1,0 +1,21 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '-t', 'gcr.io/$PROJECT_ID/emubench-agent:latest',
+      '-f', 'Dockerfile',
+      '.'
+    ]
+    timeout: '3600s'  # 1 hour timeout for the build
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/emubench-agent:latest']
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  diskSizeGb: 100
+
+timeout: '7200s'  # 2 hours
+
+images:
+  - 'gcr.io/$PROJECT_ID/emubench-agent:latest'

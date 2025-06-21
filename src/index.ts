@@ -1,5 +1,5 @@
 import { EmuAgent } from "@/agent";
-import { BootConfig } from "@/types";
+import { BootConfig, EmuTestState } from "@/types";
 import { configDotenv } from "dotenv";
 import { readFileSync } from 'fs';
 import path from "path";
@@ -12,6 +12,25 @@ const testPath = process.env.TEST_PATH;
 
 if (!authToken || !mcpSessionId || !testPath) {
   throw new Error('Missing required environment variables');
+}
+
+// Wait for test to be ready
+let testReady = false;
+while (!testReady) {
+  try {
+    const testStateContent = readFileSync(path.join(testPath, 'test_state.json'), 'utf-8');
+    const emuTestState = JSON.parse(testStateContent) as EmuTestState;
+    if (emuTestState.state === 'ready') {
+      console.log('Test ready!');
+      testReady = true;
+    } else {
+      console.log('Waiting for test to be ready...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  } catch (error) {
+    console.error('Error reading test state:', error);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
 }
 
 const configContent = readFileSync(path.join(testPath, 'test_config.json'), 'utf-8');
