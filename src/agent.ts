@@ -1,4 +1,4 @@
-import { EmuAgentConfig, BenchmarkResult, EmuBootConfig, EmuTestConfig } from '@/types';
+import { EmuAgentConfig, BenchmarkResult, EmuBootConfig, EmuTestConfig, ChatHistoryItem } from '@/types';
 import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
@@ -71,7 +71,7 @@ export class EmuAgent {
     return files.map(f => path.join(screenshotPath, f.name));
   }
 
-  async callLLMWithVision(prompt: string, mcpTools?: any[]): Promise<any> {
+  async callLLMWithVision(prompt: string, mcpTools?: any[]): Promise<ReturnType<typeof generateText>> {
     console.log('Calling LLM with vision...');
     const screenshots = await this.getLatestScreenshots();
     
@@ -94,6 +94,7 @@ export class EmuAgent {
           role: 'user',
           content: [
             { type: 'text', text: prompt },
+            { type: 'text', text: "Current screenshot of game:" },
             ...images
           ]
         }
@@ -109,16 +110,32 @@ export class EmuAgent {
     return {};
   }
 
-  buildContextualPrompt(): string {
-    // TODO
-    return `Task: ${this.agentConfig.task.name}
+  buildTaskPrompt(): string {
+    return `
+Task: ${this.agentConfig.task.name}
 Description: ${this.agentConfig.task.description}
     `;
   }
 
+  chatHistoryToString(history: ChatHistoryItem[]): string {
+    return history.map(item => {
+      return `${item.timestamp} - ${item.type}: ${item.content}`;
+    }).join('\n');
+  }
+
+  buildContextualPrompt(history: ChatHistoryItem[]): string {
+    const taskPrompt = this.buildTaskPrompt();
+    const actionHistory = this.chatHistoryToString(history);
+    return `
+${taskPrompt}
+Action history:
+${actionHistory}
+`
+  }
+
   async checkTaskCompletion(responseText: string): Promise<boolean> {
     // TODO
-    return true;
+    return false;
   }
 
   generateBenchmarkResult(history: any[]): BenchmarkResult {
@@ -132,25 +149,22 @@ Description: ${this.agentConfig.task.description}
     console.log('MCP client initialized');
 
     let iteration = 0;
-    const history = [];
+    const history: ChatHistoryItem[] = [];
+    const mcpTools = (await this.mcpClient.listTools())?.tools;
+    console.log(`Found ${mcpTools.length} tools`);
     
     while (iteration < this.agentConfig.maxIterations) {
       console.log(`Iteration ${iteration + 1}/${this.agentConfig.maxIterations}`);
-      // TODO: Typing?
-      const mcpTools = (await this.mcpClient.listTools())?.tools;
-      console.log(`Found ${mcpTools.length} tools`);
+      
       const gameState = await this.getGameState();
-      const prompt = this.buildContextualPrompt();
+      const prompt = this.buildContextualPrompt(history);
 
       console.log(`Prompt for iteration ${iteration + 1}:`, prompt);
       const response = await this.callLLMWithVision(prompt, mcpTools);
+      const currentTimestamp = new Date().toISOString();
       
-      history.push({
-        type: 'assistant_response',
-        content: response.text,
-        iteration,
-        timestamp: Date.now()
-      });
+      history.push({ type: 'message', content: response.text, timestamp: currentTimestamp });
+      console.log('LLM Response: ', response.text);
       
       // Execute tool calls if any
       if (response.toolCalls && response.toolCalls.length > 0) {
@@ -162,10 +176,9 @@ Description: ${this.agentConfig.task.description}
           });
           
           history.push({
-            type: 'tool_result',
-            toolName: toolCall.toolName,
-            result,
-            timestamp: Date.now()
+            type: 'tool_call',
+            content: `Tool name: ${toolCall.toolName}; Arguments: ${JSON.stringify(toolCall.args)}`,
+            timestamp: currentTimestamp
           });
         }
         
@@ -180,12 +193,21 @@ Description: ${this.agentConfig.task.description}
       iteration++;
     }
     console.log('Benchmark completed after', iteration + 1, 'iterations');
+    console.log('Final chat history:\n', this.chatHistoryToString(history));
+
+    await this.endTest();
     
     const result = this.generateBenchmarkResult(history);
     const resultFilePath = path.join(this.testStatePath, 'result.json');
     writeFileSync(resultFilePath, JSON.stringify(result, null, 2));
 
     return true;
+  }
+
+  async endTest() {
+    console.log('Ending test...');
+    await this.transport.terminateSession();
+    console.log('Session termintated');
   }
   
   convertMCPToolsToAISDKTools(mcpTools: any[]) {

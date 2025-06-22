@@ -46,3 +46,9 @@ export interface EmuTestMemoryState {
   contextMemWatchValues: Record<string, string>;
   endStateMemWatchValues: Record<string, string>;
 }
+
+export interface ChatHistoryItem {
+  type: 'message' | 'tool_call';
+  content: string;
+  timestamp: string;
+}
