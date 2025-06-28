@@ -57,24 +57,21 @@ export class EmuAgent {
     }
   }
 
-  async getLatestScreenshots(count: number = 1): Promise<string[]> {
+  async getLatestScreenshots(count: number = 10): Promise<string[]> {
     const screenshotPath = path.join(this.testStatePath, 'ScreenShots');
     const files = readdirSync(screenshotPath)
       .filter(f => f.endsWith('.png'))
-      .map(f => ({
-        name: f,
-        time: statSync(path.join(screenshotPath, f)).mtime
-      }))
-      .sort((a, b) => b.time.getTime() - a.time.getTime())
+      .sort((a, b) => b.localeCompare(a))
       .slice(0, count);
 
-    return files.map(f => path.join(screenshotPath, f.name));
+    return files.map(f => path.join(screenshotPath, f));
   }
 
   async callLLMWithVision(prompt: string, mcpTools?: any[]): Promise<ReturnType<typeof generateText>> {
     console.log('Calling LLM with vision...');
     const screenshots = await this.getLatestScreenshots();
-    
+    console.log(`Screenshots for context: ${screenshots.join(', ')}`);
+
     const images = screenshots.map(path => ({
       type: 'image' as const,
       image: readFileSync(path)
@@ -142,6 +139,20 @@ ${actionHistory}
     // TODO
     return { success: true };
   }
+
+  getToolRankByName(name: string) {
+    switch (name) {
+      case 'sendControllerInput': {
+        return 0;
+      }
+      case 'wait': {
+        return 1;
+      }
+      default: {
+        return 99;
+      }
+    }
+  }
   
   async runBenchmark(): Promise<boolean> {
     console.log('Starting benchmark...');
@@ -159,17 +170,21 @@ ${actionHistory}
       const gameState = await this.getGameState();
       const prompt = this.buildContextualPrompt(history);
 
-      console.log(`Prompt for iteration ${iteration + 1}:`, prompt);
+      console.log(`------ Iteration ${iteration + 1} ------`);
       const response = await this.callLLMWithVision(prompt, mcpTools);
       const currentTimestamp = new Date().toISOString();
       
       history.push({ type: 'message', content: response.text, timestamp: currentTimestamp });
-      console.log('LLM Response: ', response.text);
+      console.log(`------LLM Response: ${response.text}------`);
       
       // Execute tool calls if any
       if (response.toolCalls && response.toolCalls.length > 0) {
         console.log(`Executing ${response.toolCalls.length} tool calls...`);
-        for (const toolCall of response.toolCalls) {
+        const sortedToolCalls = response.toolCalls.sort((a, b) => {
+          return this.getToolRankByName(a.toolName) - this.getToolRankByName(b.toolName);
+        });
+        for (const toolCall of sortedToolCalls) {
+          console.log(`Executing tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
           const result = await this.mcpClient.callTool({
             name: toolCall.toolName,
             arguments: toolCall.args
@@ -181,9 +196,6 @@ ${actionHistory}
             timestamp: currentTimestamp
           });
         }
-        
-        // TODO: Needed?
-        await new Promise(resolve => setTimeout(resolve, 1000));
       }
       
       // Check if task completed
