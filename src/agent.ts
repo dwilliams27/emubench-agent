@@ -264,7 +264,7 @@ Description: ${this.agentConfig.task.description}
     console.log(
       'Final chat history:\n',
       JSON.stringify(
-        this.buildContextualPrompt(history).filter((item) => !!item.image)
+        this.buildContextualPrompt(history).filter((item) => !item.image)
       )
     );
 
