@@ -47,8 +47,32 @@ export interface EmuTestMemoryState {
   endStateMemWatchValues: Record<string, string>;
 }
 
-export interface ChatHistoryItem {
+export interface Turn {
+  iteration: number;
+  historyItems: EmuHistoryItem[];
+}
+
+export interface EmuHistoryItem {
   type: 'message' | 'tool_call';
   content: string;
+  screenshotName?: string;
   timestamp: string;
+  llmMessageContent: LlmMessageContentItem[];
+}
+
+export interface LlmMessageContentItem {
+  type: 'text' | 'image';
+  text?: string;
+  image?: NonSharedBuffer;
+}
+
+export const ToolNames = {
+  sendControllerInput: 'sendControllerInput',
+  wait: 'wait'
+}
+
+export interface SendControllerInputResponse {
+  contextMemWatchValues: Record<string, string>;
+  endStateMemWatchValues: Record<string, string>;
+  screenshot: string;
 }

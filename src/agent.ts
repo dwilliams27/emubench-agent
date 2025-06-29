@@ -1,4 +1,4 @@
-import { EmuAgentConfig, BenchmarkResult, EmuBootConfig, EmuTestConfig, ChatHistoryItem } from '@/types';
+import { EmuAgentConfig, BenchmarkResult, EmuBootConfig, EmuTestConfig, EmuHistoryItem, ToolNames, SendControllerInputResponse, Turn, LlmMessageContentItem } from '@/types';
 import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
@@ -14,6 +14,9 @@ export class EmuAgent {
   private transport: StreamableHTTPClientTransport;
   private agentConfig: EmuAgentConfig;
   private testConfig: EmuTestConfig;
+
+  private contextMemWatchValues: Record<string, string> = {};
+  private endStateMemWatchValues: Record<string, string> = {};
 
   constructor(
     private bootConfig: EmuBootConfig,
@@ -57,25 +60,25 @@ export class EmuAgent {
     }
   }
 
-  async getLatestScreenshots(count: number = 10): Promise<string[]> {
-    const screenshotPath = path.join(this.testStatePath, 'ScreenShots');
-    const files = readdirSync(screenshotPath)
-      .filter(f => f.endsWith('.png'))
-      .sort((a, b) => b.localeCompare(a))
-      .slice(0, count);
+  generateEmuHistoryItem(partialItem: Omit<EmuHistoryItem, 'llmMessageContent'>) {
+    const result = { ...partialItem } as EmuHistoryItem;
+    const items: LlmMessageContentItem[] = [
+      { type: 'text', text: `${partialItem.timestamp} - ${partialItem.type}: ${partialItem.content}` }
+    ];
+    if (result.screenshotName) {
+      const screenshotPath = path.join(this.testStatePath, 'ScreenShots');
+      items.push({
+        type: 'image',
+        image: readFileSync(path.join(screenshotPath, result.screenshotName))
+      });
+    }
+    result.llmMessageContent = items;
 
-    return files.map(f => path.join(screenshotPath, f));
+    return result;
   }
 
-  async callLLMWithVision(prompt: string, mcpTools?: any[]): Promise<ReturnType<typeof generateText>> {
-    console.log('Calling LLM with vision...');
-    const screenshots = await this.getLatestScreenshots();
-    console.log(`Screenshots for context: ${screenshots.join(', ')}`);
-
-    const images = screenshots.map(path => ({
-      type: 'image' as const,
-      image: readFileSync(path)
-    }));
+  async callLlm(prompt: LlmMessageContentItem[], mcpTools?: any[]): Promise<ReturnType<typeof generateText>> {
+    console.log('Calling LLM...');
     
     const model = this.getModel(this.agentConfig.llmProvider, this.agentConfig.model);
     const tools = mcpTools ? this.convertMCPToolsToAISDKTools(mcpTools) : undefined;
@@ -89,11 +92,8 @@ export class EmuAgent {
         },
         {
           role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            { type: 'text', text: "Current screenshot of game:" },
-            ...images
-          ]
+          // TODO: Huh?
+          content: prompt as any
         }
       ],
       tools,
@@ -107,6 +107,26 @@ export class EmuAgent {
     return {};
   }
 
+  parseToolResponse(toolName: string, content: any) {
+    if (content.type !== "text") {
+      throw new Error("Expected text content from tool");
+    }
+
+    switch (toolName) {
+      case ToolNames.wait:
+      case ToolNames.sendControllerInput: {
+        const response: SendControllerInputResponse = JSON.parse(content.text);
+        this.contextMemWatchValues = response.contextMemWatchValues || {};
+        this.endStateMemWatchValues = response.endStateMemWatchValues || {};
+
+        return response.screenshot;
+      }
+      default: {
+        return undefined;
+      }
+    }
+  }
+
   buildTaskPrompt(): string {
     return `
 Task: ${this.agentConfig.task.name}
@@ -114,20 +134,24 @@ Description: ${this.agentConfig.task.description}
     `;
   }
 
-  chatHistoryToString(history: ChatHistoryItem[]): string {
-    return history.map(item => {
-      return `${item.timestamp} - ${item.type}: ${item.content}`;
-    }).join('\n');
+  flattenChatHistory(history: Turn[]): LlmMessageContentItem[] {
+    const result: LlmMessageContentItem[] = [];
+    history.forEach(turn => {
+      turn.historyItems.forEach(historyItem => {
+        result.push(...historyItem.llmMessageContent);
+      })
+    });
+    return result;
   }
 
-  buildContextualPrompt(history: ChatHistoryItem[]): string {
+  buildContextualPrompt(history: Turn[]): LlmMessageContentItem[] {
     const taskPrompt = this.buildTaskPrompt();
-    const actionHistory = this.chatHistoryToString(history);
-    return `
-${taskPrompt}
-Action history:
-${actionHistory}
-`
+    const actionHistory = this.flattenChatHistory(history);
+    return [
+      { type: 'text', text: `Action history:` },
+      ...actionHistory,
+      { type: 'text', text: taskPrompt }
+    ];
   }
 
   async checkTaskCompletion(responseText: string): Promise<boolean> {
@@ -142,10 +166,10 @@ ${actionHistory}
 
   getToolRankByName(name: string) {
     switch (name) {
-      case 'sendControllerInput': {
+      case ToolNames.sendControllerInput: {
         return 0;
       }
-      case 'wait': {
+      case ToolNames.wait: {
         return 1;
       }
       default: {
@@ -160,7 +184,7 @@ ${actionHistory}
     console.log('MCP client initialized');
 
     let iteration = 0;
-    const history: ChatHistoryItem[] = [];
+    const history: Turn[] = [];
     const mcpTools = (await this.mcpClient.listTools())?.tools;
     console.log(`Found ${mcpTools.length} tools`);
     
@@ -171,10 +195,20 @@ ${actionHistory}
       const prompt = this.buildContextualPrompt(history);
 
       console.log(`------ Iteration ${iteration + 1} ------`);
-      const response = await this.callLLMWithVision(prompt, mcpTools);
+      const response = await this.callLlm(prompt, mcpTools);
       const currentTimestamp = new Date().toISOString();
-      
-      history.push({ type: 'message', content: response.text, timestamp: currentTimestamp });
+
+      const turn: Turn = {
+        iteration,
+        historyItems: [],
+      }
+
+      turn.historyItems.push(this.generateEmuHistoryItem({
+        type: 'message',
+        content: response.text,
+        timestamp: currentTimestamp,
+      }));
+
       console.log(`------LLM Response: ${response.text}------`);
       
       // Execute tool calls if any
@@ -189,14 +223,18 @@ ${actionHistory}
             name: toolCall.toolName,
             arguments: toolCall.args
           });
-          
-          history.push({
+          const screenshotName = this.parseToolResponse(toolCall.toolName, (result.content as any)[0]);
+
+          turn.historyItems.push(this.generateEmuHistoryItem({
             type: 'tool_call',
-            content: `Tool name: ${toolCall.toolName}; Arguments: ${JSON.stringify(toolCall.args)}`,
-            timestamp: currentTimestamp
-          });
+            content: response.text,
+            timestamp: currentTimestamp,
+            screenshotName
+          }));
         }
       }
+
+      history.push(turn);
       
       // Check if task completed
       const isComplete = await this.checkTaskCompletion(response.text);
@@ -205,7 +243,7 @@ ${actionHistory}
       iteration++;
     }
     console.log('Benchmark completed after', iteration + 1, 'iterations');
-    console.log('Final chat history:\n', this.chatHistoryToString(history));
+    console.log('Final chat history:\n', JSON.stringify(this.buildContextualPrompt(history)));
 
     await this.endTest();
     
