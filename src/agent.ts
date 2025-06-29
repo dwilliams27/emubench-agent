@@ -5,7 +5,7 @@ import { openai } from '@ai-sdk/openai';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { generateText, tool } from 'ai';
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import path from 'path';
 import z from 'zod';
 
@@ -60,17 +60,33 @@ export class EmuAgent {
     }
   }
 
-  generateEmuHistoryItem(partialItem: Omit<EmuHistoryItem, 'llmMessageContent'>) {
+  async generateEmuHistoryItem(partialItem: Omit<EmuHistoryItem, 'llmMessageContent'>) {
     const result = { ...partialItem } as EmuHistoryItem;
     const items: LlmMessageContentItem[] = [
       { type: 'text', text: `${partialItem.timestamp} - ${partialItem.type}: ${partialItem.content}` }
     ];
+
+
     if (result.screenshotName) {
       const screenshotPath = path.join(this.testStatePath, 'ScreenShots');
-      items.push({
-        type: 'image',
-        image: readFileSync(path.join(screenshotPath, result.screenshotName))
-      });
+      let imageData = null;
+      let retries = 2;
+      while (imageData === null && retries > 0) {
+        try {
+          imageData = readFileSync(path.join(screenshotPath, `${result.screenshotName}.png`));
+        } catch (error) {
+          retries -= 1;
+          // Wait in case FUSE hasnt picked up new screenshot yet
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      if (imageData) {
+        items.push({
+          type: 'image',
+          image: imageData
+        });
+      }
     }
     result.llmMessageContent = items;
 
@@ -203,11 +219,12 @@ Description: ${this.agentConfig.task.description}
         historyItems: [],
       }
 
-      turn.historyItems.push(this.generateEmuHistoryItem({
+      const historyItem = await this.generateEmuHistoryItem({
         type: 'message',
         content: response.text,
         timestamp: currentTimestamp,
-      }));
+      });
+      turn.historyItems.push(historyItem);
 
       console.log(`------LLM Response: ${response.text}------`);
       
@@ -225,12 +242,13 @@ Description: ${this.agentConfig.task.description}
           });
           const screenshotName = this.parseToolResponse(toolCall.toolName, (result.content as any)[0]);
 
-          turn.historyItems.push(this.generateEmuHistoryItem({
+          const toolHistoryItem = await this.generateEmuHistoryItem({
             type: 'tool_call',
             content: response.text,
             timestamp: currentTimestamp,
             screenshotName
-          }));
+          });
+          turn.historyItems.push(toolHistoryItem);
         }
       }
 
@@ -243,7 +261,12 @@ Description: ${this.agentConfig.task.description}
       iteration++;
     }
     console.log('Benchmark completed after', iteration + 1, 'iterations');
-    console.log('Final chat history:\n', JSON.stringify(this.buildContextualPrompt(history)));
+    console.log(
+      'Final chat history:\n',
+      JSON.stringify(
+        this.buildContextualPrompt(history).filter((item) => !!item.image)
+      )
+    );
 
     await this.endTest();
     
