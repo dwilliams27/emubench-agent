@@ -145,8 +145,9 @@ export class EmuAgent {
 
   buildTaskPrompt(): string {
     return `
-Task: ${this.agentConfig.task.name}
-Description: ${this.agentConfig.task.description}
+<game_context>${this.agentConfig.gameContext}</game_context>
+<task_name>${this.agentConfig.task.name}</task_name>
+<task_description>${this.agentConfig.task.description}</task_description>
     `;
   }
 
