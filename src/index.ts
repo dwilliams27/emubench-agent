@@ -1,4 +1,5 @@
 import { EmuAgent } from "@/agent";
+import { EmulationService } from "@/emulation.service";
 import { EmuBootConfig, EmuTestState } from "@/types";
 import { configDotenv } from "dotenv";
 import { readFileSync } from 'fs';
@@ -7,10 +8,10 @@ import path from "path";
 configDotenv();
 
 const authToken = process.env.AUTH_TOKEN;
-const mcpSessionId = process.env.MCP_SESSION_ID;
+const gameUrl = process.env.GAME_URL;
 const testPath = process.env.TEST_PATH;
 
-if (!authToken || !mcpSessionId || !testPath) {
+if (!authToken || !gameUrl || !testPath) {
   throw new Error('Missing required environment variables');
 }
 
@@ -36,11 +37,12 @@ while (!testReady) {
 const configContent = readFileSync(path.join(testPath, 'test_config.json'), 'utf-8');
 const bootConfig = JSON.parse(configContent) as EmuBootConfig;
 
+const emulationService = new EmulationService(gameUrl);
 const agent = new EmuAgent(
   bootConfig,
   authToken,
-  mcpSessionId,
-  testPath
+  testPath,
+  emulationService
 );
 
 await agent.runBenchmark();
