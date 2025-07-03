@@ -9,11 +9,13 @@ export interface PostControllerInputResponse {
 
 export class EmulationService {
   private axiosInstance: AxiosInstance;
+  private googleToken: string;
 
-  constructor(url: string) {
+  constructor(url: string, googleToken: string) {
     this.axiosInstance = axios.create({
       baseURL: url,
     });
+    this.googleToken = googleToken;
   }
 
   async postControllerInput(
@@ -28,8 +30,7 @@ export class EmulationService {
         request,
         { 
           headers: {
-            // TODO: Fetch google token
-            // 'Authorization': `Bearer ${activeTest.googleToken}`,
+            'Authorization': `Bearer ${this.googleToken}`,
             'Content-Type': 'application/json'
           } 
         }
@@ -49,8 +50,7 @@ export class EmulationService {
         { action: 'save', to: slot },
         {
           headers: {
-            // TODO: Fetch google token
-            // 'Authorization': `Bearer ${activeTest.googleToken}`,
+            'Authorization': `Bearer ${this.googleToken}`,
             'Content-Type': 'application/json'
           }
         }
@@ -69,8 +69,7 @@ export class EmulationService {
         { action: 'load', to: slot },
         {
           headers: {
-            // TODO: Fetch google token
-            // 'Authorization': `Bearer ${activeTest.googleToken}`,
+            'Authorization': `Bearer ${this.googleToken}`,
             'Content-Type': 'application/json'
           }
         }
@@ -89,8 +88,7 @@ export class EmulationService {
         { action: 'save', to: file },
         {
           headers: {
-            // TODO: Fetch google token
-            // 'Authorization': `Bearer ${activeTest.googleToken}`,
+            'Authorization': `Bearer ${this.googleToken}`,
             'Content-Type': 'application/json'
           }
         }
@@ -109,8 +107,7 @@ export class EmulationService {
         { action: 'load', to: file },
         {
           headers: {
-            // TODO: Fetch google token
-            // 'Authorization': `Bearer ${activeTest.googleToken}`,
+            'Authorization': `Bearer ${this.googleToken}`,
             'Content-Type': 'application/json'
           }
         }
@@ -129,8 +126,7 @@ export class EmulationService {
         { speed },
         {
           headers: {
-            // TODO: Fetch google token
-            // 'Authorization': `Bearer ${activeTest.googleToken}`,
+            'Authorization': `Bearer ${this.googleToken}`,
             'Content-Type': 'application/json'
           }
         }
@@ -149,8 +145,7 @@ export class EmulationService {
         { action },
         {
           headers: {
-            // TODO: Fetch google token
-            // 'Authorization': `Bearer ${activeTest.googleToken}`,
+            'Authorization': `Bearer ${this.googleToken}`,
             'Content-Type': 'application/json'
           }
         }

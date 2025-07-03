@@ -8,10 +8,11 @@ import path from "path";
 configDotenv();
 
 const authToken = process.env.AUTH_TOKEN;
+const googleToken = process.env.GOOGLE_TOKEN;
 const gameUrl = process.env.GAME_URL;
 const testPath = process.env.TEST_PATH;
 
-if (!authToken || !gameUrl || !testPath) {
+if (!authToken || !googleToken || !gameUrl || !testPath) {
   throw new Error('Missing required environment variables');
 }
 
@@ -37,7 +38,7 @@ while (!testReady) {
 const configContent = readFileSync(path.join(testPath, 'test_config.json'), 'utf-8');
 const bootConfig = JSON.parse(configContent) as EmuBootConfig;
 
-const emulationService = new EmulationService(gameUrl);
+const emulationService = new EmulationService(gameUrl, googleToken);
 const agent = new EmuAgent(
   bootConfig,
   authToken,
