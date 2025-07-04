@@ -1,4 +1,4 @@
-import { EmulationService } from "@/emulation.service";
+import { EmulationService } from "@/services/emulation.service";
 import { directionToStickPosition } from "@/utils";
 import { tool } from "ai";
 import { z } from "zod";
@@ -50,6 +50,8 @@ export function getTools(emulationService: EmulationService) {
         // TODO: Handle memwatch response
         // inputResponse.endStateMemWatchValues;
         // inputResponse.contextMemWatchValues;
+
+        return inputResponse;
       }
     }),
     wait: tool({
@@ -67,6 +69,8 @@ export function getTools(emulationService: EmulationService) {
         // TODO: Handle memwatch response
         // inputResponse.endStateMemWatchValues;
         // inputResponse.contextMemWatchValues;
+
+        return inputResponse;
       }
     })
   };

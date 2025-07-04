@@ -30,7 +30,6 @@ export interface EmuAgentConfig {
   model: string;
   maxIterations: number;
   temperature: number;
-  mcpServerEndpoint: string;
   task: EmuTask;
 }
 

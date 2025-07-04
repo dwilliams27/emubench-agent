@@ -1,10 +1,10 @@
-import { EmulationService } from '@/emulation.service';
+import { EmulationService } from '@/services/emulation.service';
 import { getTools } from '@/tools';
 import { EmuAgentConfig, BenchmarkResult, EmuBootConfig, EmuTestConfig, EmuHistoryItem, ToolNames, SendControllerInputResponse, Turn, LlmMessageContentItem } from '@/types';
 import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
-import { generateText } from 'ai';
+import { generateText, GenerateTextResult, tool, ToolSet } from 'ai';
 import { readFileSync, writeFileSync } from 'fs';
 import path from 'path';
 
@@ -14,6 +14,8 @@ export class EmuAgent {
 
   private contextMemWatchValues: Record<string, string> = {};
   private endStateMemWatchValues: Record<string, string> = {};
+
+  private mostRecentScreenshot?: NonSharedBuffer;
 
   constructor(
     private bootConfig: EmuBootConfig,
@@ -50,32 +52,50 @@ export class EmuAgent {
     }
   }
 
-  async generateEmuHistoryItem(partialItem: Omit<EmuHistoryItem, 'llmMessageContent'>) {
-    const result = { ...partialItem } as EmuHistoryItem;
-    const items: LlmMessageContentItem[] = [
-      { type: 'text', text: `${partialItem.timestamp} - ${partialItem.type}: ${partialItem.content}` }
-    ];
-
-
-    if (result.screenshotName) {
-      const screenshotPath = path.join(this.testStatePath, 'ScreenShots');
-      let imageData = null;
-      let retries = 2;
-      while (imageData === null && retries > 0) {
-        try {
-          imageData = readFileSync(path.join(screenshotPath, `${result.screenshotName}.png`));
-        } catch (error) {
-          retries -= 1;
-          // Wait in case FUSE hasnt picked up new screenshot yet
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
+  async loadScreenshot(name: string) {
+    const screenshotPath = path.join(this.testStatePath, 'ScreenShots');
+    let imageData;
+    let retries = 2;
+    while (!imageData && retries > 0) {
+      try {
+        imageData = readFileSync(path.join(screenshotPath, `${name}.png`));
+      } catch (error) {
+        retries -= 1;
+        // Wait in case FUSE hasnt picked up new screenshot yet
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
+    }
 
-      if (imageData) {
-        items.push({
-          type: 'image',
-          image: imageData
-        });
+    return imageData;
+  }
+
+  async generateEmuHistoryItem(llmResult: GenerateTextResult<ToolSet, unknown>) {
+    const result = {
+      type: 'message',
+      content: llmResult.text,
+      timestamp: new Date().toISOString(),
+    } as EmuHistoryItem;
+    const items: LlmMessageContentItem[] = [
+      { type: 'text', text: `${result.timestamp} - ${result.type}: ${result.content}` },
+    ];
+    // TODO: I'm lazy
+    for (const toolResult of (llmResult.toolResults as any)) {
+      if (toolResult.result?.screenshot) {
+        const imageData = await this.loadScreenshot(toolResult.result.screenshot);
+        if (imageData) {
+          items.push(...[
+            {
+              type: 'text' as const,
+              text: `Tool call: ${toolResult.toolName} called with params ${JSON.stringify(toolResult.args)}`
+            },
+            {
+              type: 'image' as const,
+              image: imageData
+            }
+          ]);
+
+          this.mostRecentScreenshot = imageData;
+        }
       }
     }
     result.llmMessageContent = items;
@@ -136,7 +156,10 @@ export class EmuAgent {
     return [
       { type: 'text', text: `Action history:` },
       ...actionHistory,
-      { type: 'text', text: taskPrompt }
+      { type: 'text', text: taskPrompt },
+      { type: 'text', text: "Most recent screenshot:" },
+      { type: 'image', image: this.mostRecentScreenshot },
+      { type: 'text', text: "Decide what to do to best proceed towards your goal" },
     ];
   }
 
@@ -171,6 +194,8 @@ export class EmuAgent {
     const history: Turn[] = [];
     const tools = getTools(this.emulationService);
     
+    this.mostRecentScreenshot = await this.loadScreenshot('0');
+    
     while (iteration < this.agentConfig.maxIterations) {
       console.log(`Iteration ${iteration + 1}/${this.agentConfig.maxIterations}`);
       
@@ -179,18 +204,13 @@ export class EmuAgent {
 
       console.log(`------ Iteration ${iteration + 1} ------`);
       const response = await this.callLlm(prompt, tools);
-      const currentTimestamp = new Date().toISOString();
 
       const turn: Turn = {
         iteration,
         historyItems: [],
       }
 
-      const historyItem = await this.generateEmuHistoryItem({
-        type: 'message',
-        content: response.text,
-        timestamp: currentTimestamp,
-      });
+      const historyItem = await this.generateEmuHistoryItem(response);
       turn.historyItems.push(historyItem);
 
       console.log(`------LLM Response: ${response.text}------`);

@@ -9,13 +9,14 @@ export interface PostControllerInputResponse {
 
 export class EmulationService {
   private axiosInstance: AxiosInstance;
-  private googleToken: string;
 
   constructor(url: string, googleToken: string) {
     this.axiosInstance = axios.create({
       baseURL: url,
+      headers: {
+        Authorization: `Bearer ${googleToken}`
+      }
     });
-    this.googleToken = googleToken;
   }
 
   async postControllerInput(
@@ -30,7 +31,6 @@ export class EmulationService {
         request,
         { 
           headers: {
-            'Authorization': `Bearer ${this.googleToken}`,
             'Content-Type': 'application/json'
           } 
         }
@@ -50,7 +50,6 @@ export class EmulationService {
         { action: 'save', to: slot },
         {
           headers: {
-            'Authorization': `Bearer ${this.googleToken}`,
             'Content-Type': 'application/json'
           }
         }
@@ -69,7 +68,6 @@ export class EmulationService {
         { action: 'load', to: slot },
         {
           headers: {
-            'Authorization': `Bearer ${this.googleToken}`,
             'Content-Type': 'application/json'
           }
         }
@@ -88,7 +86,6 @@ export class EmulationService {
         { action: 'save', to: file },
         {
           headers: {
-            'Authorization': `Bearer ${this.googleToken}`,
             'Content-Type': 'application/json'
           }
         }
@@ -107,7 +104,6 @@ export class EmulationService {
         { action: 'load', to: file },
         {
           headers: {
-            'Authorization': `Bearer ${this.googleToken}`,
             'Content-Type': 'application/json'
           }
         }
@@ -126,7 +122,6 @@ export class EmulationService {
         { speed },
         {
           headers: {
-            'Authorization': `Bearer ${this.googleToken}`,
             'Content-Type': 'application/json'
           }
         }
@@ -145,7 +140,6 @@ export class EmulationService {
         { action },
         {
           headers: {
-            'Authorization': `Bearer ${this.googleToken}`,
             'Content-Type': 'application/json'
           }
         }

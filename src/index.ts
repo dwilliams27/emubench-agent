@@ -1,5 +1,6 @@
 import { EmuAgent } from "@/agent";
-import { EmulationService } from "@/emulation.service";
+import { EmulationService } from "@/services/emulation.service";
+import { ApiService } from "@/services/api.service";
 import { EmuBootConfig, EmuTestState } from "@/types";
 import { configDotenv } from "dotenv";
 import { readFileSync } from 'fs';
@@ -39,6 +40,7 @@ const configContent = readFileSync(path.join(testPath, 'test_config.json'), 'utf
 const bootConfig = JSON.parse(configContent) as EmuBootConfig;
 
 const emulationService = new EmulationService(gameUrl, googleToken);
+const apiService = new ApiService("https://api.emubench.com", authToken);
 const agent = new EmuAgent(
   bootConfig,
   authToken,
@@ -47,3 +49,7 @@ const agent = new EmuAgent(
 );
 
 await agent.runBenchmark();
+
+await apiService.endTest(bootConfig.testConfig.id);
+
+console.log('Test finished');
