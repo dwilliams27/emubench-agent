@@ -99,7 +99,8 @@ export class EmuAgent {
             type: 'image' as const,
             image: imageData
           });
-          results[results.length - 1].screenshotNames.push(`${toolResult.result.screenshot}.png`);
+          // TODO: Awkward
+          results[results.length - 1].screenshotNames.push(`${parseInt(toolResult.result.screenshot) - 1}.png`);
 
           this.mostRecentScreenshot = imageData;
         }
@@ -114,7 +115,7 @@ export class EmuAgent {
   }
 
   async callLlm(prompt: LlmMessageContentItem[], tools: any): Promise<ReturnType<typeof generateText>> {
-    console.log('Calling LLM...');
+    this.logger.log(LogNamespace.DEV, 'Calling LLM...');
     
     const model = this.getModel(this.agentConfig.llmProvider, this.agentConfig.model);
     
@@ -213,7 +214,7 @@ export class EmuAgent {
   }
   
   async runBenchmark(): Promise<boolean> {
-    console.log('Starting benchmark...');
+    this.logger.log(LogNamespace.DEV, 'Starting benchmark...');
 
     let iteration = 0;
     const history: Turn[] = [];
@@ -222,12 +223,12 @@ export class EmuAgent {
     this.mostRecentScreenshot = await this.loadScreenshot('0');
     
     while (iteration < this.agentConfig.maxIterations) {
-      console.log(`Iteration ${iteration + 1}/${this.agentConfig.maxIterations}`);
+      this.logger.log(LogNamespace.DEV, `Iteration ${iteration + 1}/${this.agentConfig.maxIterations}`);
       
       const gameState = await this.getGameState();
       const prompt = this.buildContextualPrompt(history);
 
-      console.log(`------ Iteration ${iteration + 1} ------`);
+      this.logger.log(LogNamespace.DEV, `------ Iteration ${iteration + 1} ------`);
       const response = await this.callLlm(prompt, tools);
 
       const turn: Turn = {
@@ -238,7 +239,7 @@ export class EmuAgent {
       const historyItems = await this.generateEmuHistoryItems(response);
       turn.historyItems.push(...historyItems);
 
-      console.log(`------LLM Response: ${response.text}------`);
+      this.logger.log(LogNamespace.DEV, `------LLM Response: ${response.text}------`);
       
       // TODO: Record tool calls to history
       // const toolHistoryItem = await this.generateEmuHistoryItem({
@@ -258,13 +259,7 @@ export class EmuAgent {
 
       iteration++;
     }
-    console.log('Benchmark completed after', iteration + 1, 'iterations');
-    console.log(
-      'Final chat history:\n',
-      JSON.stringify(
-        this.buildContextualPrompt(history).filter((item) => !item.image)
-      )
-    );
+    this.logger.log(LogNamespace.DEV, `Benchmark completed after ${iteration + 1} iterations`);
 
     await this.endTest();
     
@@ -276,8 +271,8 @@ export class EmuAgent {
   }
 
   async endTest() {
-    console.log('Ending test...');
+    this.logger.log(LogNamespace.DEV, 'Ending test...');
     // TODO: Kill game container
-    console.log('Session termintated');
+    this.logger.log(LogNamespace.DEV, 'Session termintated', true);
   }
 }
