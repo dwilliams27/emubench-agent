@@ -26,7 +26,8 @@ export class ApiService {
       );
       return response.data;
     } catch (error) {
-      console.error(`[Api] Error ending test: ${(error as any).message}`);
+      const axiosError = error as any;
+      console.error(`[Api] Error ending test: ${axiosError.message} ${axiosError.response?.data}`);
       return null;
     }
   }

@@ -54,8 +54,7 @@ export interface Turn {
 
 export interface EmuHistoryItem {
   type: 'message' | 'tool_call';
-  content: string;
-  screenshotName?: string;
+  screenshotNames: string[];
   timestamp: string;
   llmMessageContent: LlmMessageContentItem[];
 }
@@ -103,4 +102,14 @@ export interface IpcControllerInputRequest {
   mainStick?: StickPosition;
   cStick?: StickPosition;
   frames: number;
+}
+
+export interface LogItem {
+  text: string;
+  metadata: Record<string, string>;
+}
+
+export interface LogBlock {
+  title: string;
+  logs: LogItem[]
 }

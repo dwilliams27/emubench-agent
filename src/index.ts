@@ -5,6 +5,7 @@ import { EmuBootConfig, EmuTestState } from "@/types";
 import { configDotenv } from "dotenv";
 import { readFileSync } from 'fs';
 import path from "path";
+import { LoggerService } from "@/services/logger.service";
 
 configDotenv();
 
@@ -40,16 +41,24 @@ const configContent = readFileSync(path.join(testPath, 'test_config.json'), 'utf
 const bootConfig = JSON.parse(configContent) as EmuBootConfig;
 
 const emulationService = new EmulationService(gameUrl, googleToken);
+const logger = new LoggerService(testPath);
 const apiService = new ApiService("https://api.emubench.com", authToken);
 const agent = new EmuAgent(
   bootConfig,
   authToken,
   testPath,
-  emulationService
+  emulationService,
+  logger
 );
 
-await agent.runBenchmark();
+try {
+  await agent.runBenchmark();
+  await apiService.endTest(bootConfig.testConfig.id);
 
-await apiService.endTest(bootConfig.testConfig.id);
+  console.log('Test finished');
+  process.exit(0);
+} catch (error) {
+  console.log(`Test failed: ${(error as any).message}`);
+  process.exit(1);
+}
 
-console.log('Test finished');
