@@ -9,6 +9,7 @@ import { openai } from '@ai-sdk/openai';
 import { generateText, GenerateTextResult, ToolSet } from 'ai';
 import { readFileSync, writeFileSync } from 'fs';
 import path from 'path';
+import { FirebaseCollection, FirebaseFile, FirebaseService, FirebaseSubCollection } from '@/services/firebase.service';
 
 export class EmuAgent {
   private agentConfig: EmuAgentConfig;
@@ -24,6 +25,7 @@ export class EmuAgent {
     private authToken: string,
     private testStatePath: string,
     private emulationService: EmulationService,
+    private firbaseService: FirebaseService,
     private logger: LoggerService
   ) {
     this.agentConfig = bootConfig.agentConfig;
@@ -105,6 +107,25 @@ export class EmuAgent {
 
           this.mostRecentScreenshot = imageData;
         }
+      }
+      if (toolResult.result?.endStateMemWatchValues && toolResult.result?.contextMemWatchValues) {
+        const oldState = await this.firbaseService.read({
+          collection: FirebaseCollection.SESSIONS,
+          subCollection: FirebaseSubCollection.STATE,
+          file: FirebaseFile.TEST_STATE,
+          testId: this.bootConfig.testConfig.id,
+        });
+        this.firbaseService.write({
+          collection: FirebaseCollection.SESSIONS,
+          subCollection: FirebaseSubCollection.STATE,
+          file: FirebaseFile.TEST_STATE,
+          testId: this.bootConfig.testConfig.id,
+          payload: [{
+            ...oldState,
+            contextMemWatchValues: toolResult.result?.contextMemWatchValues,
+            endStateMemWatchValues: toolResult.result?.endStateMemWatchValues
+          }]
+        });
       }
     }
 

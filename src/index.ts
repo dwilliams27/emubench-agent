@@ -25,7 +25,7 @@ while (!testReady) {
   try {
     const testStateContent = readFileSync(path.join(testPath, 'test_state.json'), 'utf-8');
     const emuTestState = JSON.parse(testStateContent) as EmuTestState;
-    if (emuTestState.state === 'server-ready') {
+    if (emuTestState.state === 'emulator-ready') {
       console.log('Test ready!');
       testReady = true;
     } else {
@@ -50,6 +50,7 @@ const agent = new EmuAgent(
   authToken,
   testPath,
   emulationService,
+  firebaseService,
   logger
 );
 
@@ -66,7 +67,7 @@ await firebaseService.write({
 
 try {
   await agent.runBenchmark();
-  
+
   await apiService.endTest(bootConfig.testConfig.id);
   console.log('Test finished');
   process.exit(0);
