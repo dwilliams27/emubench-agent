@@ -24,6 +24,7 @@ export class ApiService {
           } 
         }
       );
+      console.log(`[Api] Test successfuly ended`);
       return response.data;
     } catch (error) {
       const axiosError = error as any;

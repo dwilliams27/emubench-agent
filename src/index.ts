@@ -1,11 +1,12 @@
 import { EmuAgent } from "@/agent";
 import { EmulationService } from "@/services/emulation.service";
 import { ApiService } from "@/services/api.service";
-import { EmuBootConfig, EmuTestState } from "@/types";
+import { EmuBootConfig, EmuTestState } from "@/types/shared";
 import { configDotenv } from "dotenv";
 import { readFileSync } from 'fs';
 import path from "path";
 import { LoggerService } from "@/services/logger.service";
+import { FirebaseCollection, FirebaseFile, FirebaseService, FirebaseSubCollection } from "@/services/firebase.service";
 
 configDotenv();
 
@@ -18,7 +19,7 @@ if (!authToken || !googleToken || !gameUrl || !testPath) {
   throw new Error('Missing required environment variables');
 }
 
-// Wait for test to be ready
+// TODO: Move this to firebase
 let testReady = false;
 while (!testReady) {
   try {
@@ -41,7 +42,8 @@ const configContent = readFileSync(path.join(testPath, 'test_config.json'), 'utf
 const bootConfig = JSON.parse(configContent) as EmuBootConfig;
 
 const emulationService = new EmulationService(gameUrl, googleToken);
-const logger = new LoggerService(testPath);
+const firebaseService = new FirebaseService();
+const logger = new LoggerService(bootConfig.testConfig.id, firebaseService);
 const apiService = new ApiService("https://api.emubench.com", authToken);
 const agent = new EmuAgent(
   bootConfig,
@@ -51,14 +53,24 @@ const agent = new EmuAgent(
   logger
 );
 
+const testState: EmuTestState = {
+  state: "running"
+};
+await firebaseService.write({
+  collection: FirebaseCollection.SESSIONS,
+  subCollection: FirebaseSubCollection.STATE,
+  file: FirebaseFile.AGENT_STATE,
+  testId: bootConfig.testConfig.id,
+  payload: [testState]
+});
+
 try {
   await agent.runBenchmark();
+  
   await apiService.endTest(bootConfig.testConfig.id);
-
   console.log('Test finished');
   process.exit(0);
 } catch (error) {
   console.log(`Test failed: ${(error as any).message}`);
   process.exit(1);
 }
-

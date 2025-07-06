@@ -1,7 +1,8 @@
 import { EmulationService } from '@/services/emulation.service';
 import { LoggerService, LogMetadata, LogNamespace } from '@/services/logger.service';
 import { getTools } from '@/tools';
-import { EmuAgentConfig, BenchmarkResult, EmuBootConfig, EmuTestConfig, EmuHistoryItem, Turn, LlmMessageContentItem, LogBlock } from '@/types';
+import { BenchmarkResult, Turn, LlmMessageContentItem, HistoryItem } from '@/types/types';
+import { EmuAgentConfig, EmuBootConfig, EmuTestConfig, EmuLogBlock } from '@/types/shared';
 import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
@@ -71,14 +72,14 @@ export class EmuAgent {
     return imageData;
   }
 
-  async generateEmuHistoryItems(llmResult: GenerateTextResult<ToolSet, unknown>): Promise<EmuHistoryItem[]> {
+  async generateHistoryItems(llmResult: GenerateTextResult<ToolSet, unknown>): Promise<HistoryItem[]> {
     const timestamp = new Date().toISOString();
     const results = [{
       type: 'message',
       timestamp,
       screenshotNames: [],
       llmMessageContent: [{ type: 'text', text: `${timestamp} - Message: ${llmResult.text}` }],
-    }] as EmuHistoryItem[];
+    }] as HistoryItem[];
     // TODO: I'm lazy
     for (const toolResult of (llmResult.toolResults as any)) {
       results.push({
@@ -110,7 +111,7 @@ export class EmuAgent {
     return results;
   }
 
-  async writeHistoryItemToLogFile(item: EmuHistoryItem) {
+  async writeHistoryItemToLogFile(item: HistoryItem) {
     // Write this item to 
   }
 
@@ -185,7 +186,7 @@ export class EmuAgent {
   }
 
   async logTurn(turn: Turn) {
-    const logBlock: LogBlock = {
+    const EmuLogBlock: EmuLogBlock = {
       title: `Agent Turn ${turn.iteration}`,
       logs: []
     };
@@ -194,7 +195,7 @@ export class EmuAgent {
     for (const historyItem of turn.historyItems) {
       for (const llmMessage of historyItem.llmMessageContent) {
         if (llmMessage.image) {
-          logBlock.logs.push({
+          EmuLogBlock.logs.push({
             text: 'image',
             metadata: {
               [LogMetadata.SCREENSHOT_NAME]: historyItem.screenshotNames[screenshotIndex]
@@ -202,15 +203,14 @@ export class EmuAgent {
           });
           screenshotIndex++;
         } else {
-          logBlock.logs.push({
-            text: llmMessage.text!,
-            metadata: {}
+          EmuLogBlock.logs.push({
+            text: llmMessage.text!
           });
         }
       }
     }
 
-    await this.logger.log(LogNamespace.AGENT, logBlock, true);
+    await this.logger.log(LogNamespace.AGENT, EmuLogBlock, true);
   }
   
   async runBenchmark(): Promise<boolean> {
@@ -236,13 +236,13 @@ export class EmuAgent {
         historyItems: [],
       }
 
-      const historyItems = await this.generateEmuHistoryItems(response);
+      const historyItems = await this.generateHistoryItems(response);
       turn.historyItems.push(...historyItems);
 
       this.logger.log(LogNamespace.DEV, `------LLM Response: ${response.text}------`);
       
       // TODO: Record tool calls to history
-      // const toolHistoryItem = await this.generateEmuHistoryItem({
+      // const toolHistoryItem = await this.generateHistoryItem({
       //   type: 'tool_call',
       //   content: response.text,
       //   timestamp: currentTimestamp,
@@ -260,19 +260,11 @@ export class EmuAgent {
       iteration++;
     }
     this.logger.log(LogNamespace.DEV, `Benchmark completed after ${iteration + 1} iterations`);
-
-    await this.endTest();
     
     const result = this.generateBenchmarkResult(history);
     const resultFilePath = path.join(this.testStatePath, 'result.json');
     writeFileSync(resultFilePath, JSON.stringify(result, null, 2));
 
     return true;
-  }
-
-  async endTest() {
-    this.logger.log(LogNamespace.DEV, 'Ending test...');
-    // TODO: Kill game container
-    this.logger.log(LogNamespace.DEV, 'Session termintated', true);
   }
 }
