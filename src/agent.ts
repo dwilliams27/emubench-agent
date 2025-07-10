@@ -40,12 +40,6 @@ export class EmuAgent {
     if (!this.agentConfig.model) {
       throw new Error('Model is required');
     }
-
-    const requestInit = {
-      headers: {
-        "Authorization": `Bearer ${this.authToken}`,
-      }
-    };
   }
 
   private getModel(provider: string, model: string) {

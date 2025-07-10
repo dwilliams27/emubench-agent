@@ -19,30 +19,11 @@ if (!authToken || !googleToken || !gameUrl || !testPath) {
   throw new Error('Missing required environment variables');
 }
 
-// TODO: Move this to firebase
-let testReady = false;
-while (!testReady) {
-  try {
-    const testStateContent = readFileSync(path.join(testPath, 'test_state.json'), 'utf-8');
-    const emuTestState = JSON.parse(testStateContent) as EmuTestState;
-    if (emuTestState.state === 'emulator-ready') {
-      console.log('Test ready!');
-      testReady = true;
-    } else {
-      console.log(`Waiting for test to be ready; current status: ${emuTestState.state}`);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-  } catch (error) {
-    console.error('Test file not found yet...');
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-}
-
+// Init services
 const configContent = readFileSync(path.join(testPath, 'test_config.json'), 'utf-8');
 const bootConfig = JSON.parse(configContent) as EmuBootConfig;
-
-const emulationService = new EmulationService(gameUrl, googleToken);
 const firebaseService = new FirebaseService();
+const emulationService = new EmulationService(gameUrl, googleToken);
 const logger = new LoggerService(bootConfig.testConfig.id, firebaseService);
 const apiService = new ApiService("https://api.emubench.com", authToken);
 const agent = new EmuAgent(
@@ -54,15 +35,39 @@ const agent = new EmuAgent(
   logger
 );
 
-const testState: EmuTestState = {
-  state: "running"
-};
+let testReady = false;
+let testStateContent;
+while (!testReady) {
+  try {
+    testStateContent = await firebaseService.read({
+      collection: FirebaseCollection.SESSIONS,
+      subCollection: FirebaseSubCollection.STATE,
+      file: FirebaseFile.TEST_STATE,
+      testId: bootConfig.testConfig.id
+    }) as unknown as EmuTestState;
+    const status = testStateContent.status;
+    if (status === 'emulator-ready') {
+      console.log('Test ready!');
+      testReady = true;
+    } else {
+      console.log(`Waiting for test to be ready; current status: ${status}`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  } catch (error) {
+    console.error('Test file not found yet...');
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+}
+
 await firebaseService.write({
   collection: FirebaseCollection.SESSIONS,
   subCollection: FirebaseSubCollection.STATE,
   file: FirebaseFile.AGENT_STATE,
   testId: bootConfig.testConfig.id,
-  payload: [testState]
+  payload: [{
+    ...testStateContent,
+    status: 'running'
+  }]
 });
 
 try {
