@@ -15,9 +15,6 @@ export class EmuAgent {
   private agentConfig: EmuAgentConfig;
   private testConfig: EmuTestConfig;
 
-  private contextMemWatchValues: Record<string, string> = {};
-  private endStateMemWatchValues: Record<string, string> = {};
-
   private mostRecentScreenshot?: NonSharedBuffer;
 
   constructor(
@@ -144,7 +141,7 @@ export class EmuAgent {
         },
         {
           role: 'user',
-          // TODO: Huh?
+          // Huh
           content: prompt as any
         }
       ],
@@ -180,14 +177,18 @@ export class EmuAgent {
   buildContextualPrompt(history: Turn[]): LlmMessageContentItem[] {
     const taskPrompt = this.buildTaskPrompt();
     const actionHistory = this.flattenChatHistory(history);
-    return [
+    const result: LlmMessageContentItem[] = [
       { type: 'text', text: `Action history:` },
       ...actionHistory,
       { type: 'text', text: taskPrompt },
-      { type: 'text', text: "Most recent screenshot:" },
-      { type: 'image', image: this.mostRecentScreenshot },
-      { type: 'text', text: "Decide what to do to best proceed towards your goal" },
+      { type: 'text', text: "Most recent screenshot:" }
     ];
+    if (this.mostRecentScreenshot) {
+      result.push({ type: 'image', image: this.mostRecentScreenshot });
+    }
+    result.push({ type: 'text', text: "Decide what to do to best proceed towards your goal" });
+
+    return result;
   }
 
   async checkTaskCompletion(responseText: string): Promise<boolean> {

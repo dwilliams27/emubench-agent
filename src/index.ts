@@ -14,15 +14,20 @@ const authToken = process.env.AUTH_TOKEN;
 const googleToken = process.env.GOOGLE_TOKEN;
 const gameUrl = process.env.GAME_URL;
 const testPath = process.env.TEST_PATH;
+const testId = process.env.TEST_ID;
 
-if (!authToken || !googleToken || !gameUrl || !testPath) {
+if (!authToken || !googleToken || !gameUrl || !testPath || !testId) {
   throw new Error('Missing required environment variables');
 }
 
 // Init services
-const configContent = readFileSync(path.join(testPath, 'test_config.json'), 'utf-8');
-const bootConfig = JSON.parse(configContent) as EmuBootConfig;
 const firebaseService = new FirebaseService();
+const bootConfig = (await firebaseService.read({
+  collection: FirebaseCollection.SESSIONS,
+  subCollection: FirebaseSubCollection.CONFIG,
+  file: FirebaseFile.BOOT_CONFIG,
+  testId,
+}))[0] as unknown as EmuBootConfig;
 const emulationService = new EmulationService(gameUrl, googleToken);
 const logger = new LoggerService(bootConfig.testConfig.id, firebaseService);
 const apiService = new ApiService("https://api.emubench.com", authToken);
@@ -39,12 +44,12 @@ let testReady = false;
 let testStateContent;
 while (!testReady) {
   try {
-    testStateContent = await firebaseService.read({
+    testStateContent = (await firebaseService.read({
       collection: FirebaseCollection.SESSIONS,
       subCollection: FirebaseSubCollection.STATE,
       file: FirebaseFile.TEST_STATE,
       testId: bootConfig.testConfig.id
-    }) as unknown as EmuTestState;
+    }))[0] as unknown as EmuTestState;
     const status = testStateContent.status;
     if (status === 'emulator-ready') {
       console.log('Test ready!');
