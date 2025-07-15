@@ -65,7 +65,7 @@ export class EmuAgent {
     return imageData;
   }
 
-  async generateHistoryItems(llmResult: GenerateTextResult<ToolSet, unknown>): Promise<HistoryItem[]> {
+  async generateHistoryItems(llmResult: GenerateTextResult<ToolSet, unknown>, iteration: number): Promise<HistoryItem[]> {
     const timestamp = new Date().toISOString();
     const results = [{
       type: 'message',
@@ -100,21 +100,23 @@ export class EmuAgent {
         }
       }
       if (toolResult.result?.endStateMemWatchValues && toolResult.result?.contextMemWatchValues) {
-        const oldState = await this.firbaseService.read({
+        const oldState = (await this.firbaseService.read({
           collection: FirebaseCollection.SESSIONS,
           subCollection: FirebaseSubCollection.STATE,
           file: FirebaseFile.TEST_STATE,
           testId: this.bootConfig.testConfig.id,
-        });
-        this.firbaseService.write({
+        }))[0];
+        await this.firbaseService.write({
           collection: FirebaseCollection.SESSIONS,
           subCollection: FirebaseSubCollection.STATE,
           file: FirebaseFile.TEST_STATE,
           testId: this.bootConfig.testConfig.id,
           payload: [{
             ...oldState,
-            contextMemWatchValues: toolResult.result?.contextMemWatchValues,
-            endStateMemWatchValues: toolResult.result?.endStateMemWatchValues
+            [iteration]: {
+              contextMemWatchValues: toolResult.result?.contextMemWatchValues,
+              endStateMemWatchValues: toolResult.result?.endStateMemWatchValues
+            }
           }]
         });
       }
@@ -232,19 +234,19 @@ export class EmuAgent {
   async runBenchmark(): Promise<boolean> {
     this.logger.log(LogNamespace.DEV, 'Starting benchmark...');
 
-    let iteration = 0;
+    let iteration = 1;
     const history: Turn[] = [];
     const tools = getTools(this.emulationService);
     
     this.mostRecentScreenshot = await this.loadScreenshot('0');
     
     while (iteration < this.agentConfig.maxIterations) {
-      this.logger.log(LogNamespace.DEV, `Iteration ${iteration + 1}/${this.agentConfig.maxIterations}`);
+      this.logger.log(LogNamespace.DEV, `Iteration ${iteration}/${this.agentConfig.maxIterations}`);
       
       const gameState = await this.getGameState();
       const prompt = this.buildContextualPrompt(history);
 
-      this.logger.log(LogNamespace.DEV, `------ Iteration ${iteration + 1} ------`);
+      this.logger.log(LogNamespace.DEV, `------ Iteration ${iteration} ------`);
       const response = await this.callLlm(prompt, tools);
 
       const turn: Turn = {
@@ -252,7 +254,7 @@ export class EmuAgent {
         historyItems: [],
       }
 
-      const historyItems = await this.generateHistoryItems(response);
+      const historyItems = await this.generateHistoryItems(response, iteration);
       turn.historyItems.push(...historyItems);
 
       this.logger.log(LogNamespace.DEV, `------LLM Response: ${response.text}------`);
