@@ -3,24 +3,6 @@ export interface BenchmarkResult {
   success: boolean;
 }
 
-export interface Turn {
-  iteration: number;
-  historyItems: HistoryItem[];
-}
-
-export interface HistoryItem {
-  type: 'message' | 'tool_call';
-  screenshotNames: string[];
-  timestamp: string;
-  llmMessageContent: LlmMessageContentItem[];
-}
-
-export interface LlmMessageContentItem {
-  type: 'text' | 'image';
-  text?: string;
-  image?: NonSharedBuffer;
-}
-
 export const ToolNames = {
   sendControllerInput: 'sendControllerInput',
   wait: 'wait'

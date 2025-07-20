@@ -3,10 +3,8 @@ import { EmulationService } from "@/services/emulation.service";
 import { ApiService } from "@/services/api.service";
 import { EmuBootConfig, EmuTestState } from "@/types/shared";
 import { configDotenv } from "dotenv";
-import { readFileSync } from 'fs';
-import path from "path";
 import { LoggerService } from "@/services/logger.service";
-import { FirebaseCollection, FirebaseFile, FirebaseService, FirebaseSubCollection } from "@/services/firebase.service";
+import { FirebaseCollection, FirebaseFile, firebaseService, FirebaseService, FirebaseSubCollection } from "@/services/firebase.service";
 
 configDotenv();
 
@@ -21,7 +19,6 @@ if (!authToken || !googleToken || !gameUrl || !testPath || !testId) {
 }
 
 // Init services
-const firebaseService = new FirebaseService();
 const bootConfig = (await firebaseService.read({
   collection: FirebaseCollection.SESSIONS,
   subCollection: FirebaseSubCollection.CONFIG,
@@ -83,5 +80,6 @@ try {
   process.exit(0);
 } catch (error) {
   console.log(`Test failed: ${(error as any).message}`);
+  await apiService.endTest(bootConfig.testConfig.id);
   process.exit(1);
 }

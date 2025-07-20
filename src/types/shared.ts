@@ -1,6 +1,16 @@
 export interface EmuLogItem {
   text: string;
-  metadata?: Record<string, string>;
+  metadata: {
+    type: 'tool-call' | 'message';
+    timestamp: string;
+
+    // @ts-ignore
+    screenshotData?: NonSharedBuffer;
+    screenshotName?: string;
+
+    toolName?: string;
+    toolPayload?: any;
+  };
 }
 
 export interface EmuLogBlock {
@@ -50,7 +60,25 @@ export interface EmuTestState {
   endStateMemWatchValues: Record<string, string>;
 }
 
-export interface EmuTask {
-  name: string;
-  description: string;
+export interface EmuActiveTestReponse {
+  testState: EmuLogBlock[],
+  screenshots: Record<string, string>,
+  agentLogs: EmuLogBlock[],
 }
+
+export interface EmuTurn {
+  iteration: number;
+  logBlock: EmuLogBlock;
+}
+
+export interface EmuLlmMessageContentItem {
+  type: 'text' | 'image';
+  text?: string;
+  // @ts-ignore
+  image?: NonSharedBuffer;
+}
+
+export const EmuLogNamespace = {
+  DEV: 'DEV',
+  AGENT: 'AGENT'
+};

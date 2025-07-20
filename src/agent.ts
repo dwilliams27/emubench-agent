@@ -1,8 +1,8 @@
 import { EmulationService } from '@/services/emulation.service';
-import { LoggerService, LogMetadata, LogNamespace } from '@/services/logger.service';
+import { LoggerService } from '@/services/logger.service';
 import { getTools } from '@/tools';
-import { BenchmarkResult, Turn, LlmMessageContentItem, HistoryItem } from '@/types/types';
-import { EmuAgentConfig, EmuBootConfig, EmuTestConfig, EmuLogBlock } from '@/types/shared';
+import { BenchmarkResult } from '@/types/types';
+import { EmuAgentConfig, EmuBootConfig, EmuTestConfig, EmuLogBlock, EmuTurn, EmuLlmMessageContentItem, EmuLogNamespace } from '@/types/shared';
 import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
@@ -65,36 +65,35 @@ export class EmuAgent {
     return imageData;
   }
 
-  async generateHistoryItems(llmResult: GenerateTextResult<ToolSet, unknown>, iteration: number): Promise<HistoryItem[]> {
+  async generateLogBlock(llmResult: GenerateTextResult<ToolSet, unknown>, iteration: number): Promise<EmuLogBlock> {
     const timestamp = new Date().toISOString();
-    const results = [{
-      type: 'message',
-      timestamp,
-      screenshotNames: [],
-      llmMessageContent: [{ type: 'text', text: `${timestamp} - Message: ${llmResult.text}` }],
-    }] as HistoryItem[];
+    const results: EmuLogBlock = {
+      title: `Iteration ${iteration}`,
+      logs: [{
+        text: llmResult.text,
+        metadata: {
+          type: 'message',
+          timestamp
+        }
+      }]
+    };
     // TODO: I'm lazy
     for (const toolResult of (llmResult.toolResults as any)) {
-      results.push({
-        type: 'tool_call',
-        timestamp,
-        screenshotNames: [],
-        llmMessageContent: [
-          {
-            type: 'text' as const,
-            text: `${timestamp} - ToolCall: ${toolResult.toolName} called with ${JSON.stringify(toolResult.args)}`
-          },
-        ]
+      results.logs.push({
+        text: '',
+        metadata: {
+          type: 'tool-call',
+          timestamp,
+          toolName: toolResult.name,
+          toolPayload: toolResult.args
+        }
       });
       if (toolResult.result?.screenshot) {
         const imageData = await this.loadScreenshot(toolResult.result.screenshot);
         if (imageData) {
-          results[results.length - 1].llmMessageContent.push({
-            type: 'image' as const,
-            image: imageData
-          });
+          results.logs[results.logs.length - 1].metadata.screenshotData = imageData;
           // TODO: Awkward
-          results[results.length - 1].screenshotNames.push(`${parseInt(toolResult.result.screenshot) - 1}.png`);
+          results.logs[results.logs.length - 1].metadata.screenshotName = `${parseInt(toolResult.result.screenshot) - 1}.png`;
 
           this.mostRecentScreenshot = imageData;
         }
@@ -125,12 +124,8 @@ export class EmuAgent {
     return results;
   }
 
-  async writeHistoryItemToLogFile(item: HistoryItem) {
-    // Write this item to 
-  }
-
-  async callLlm(prompt: LlmMessageContentItem[], tools: any): Promise<ReturnType<typeof generateText>> {
-    this.logger.log(LogNamespace.DEV, 'Calling LLM...');
+  async callLlm(prompt: EmuLlmMessageContentItem[], tools: any): Promise<ReturnType<typeof generateText>> {
+    this.logger.log(EmuLogNamespace.DEV, 'Calling LLM...');
     
     const model = this.getModel(this.agentConfig.llmProvider, this.agentConfig.model);
     
@@ -166,20 +161,42 @@ export class EmuAgent {
     `;
   }
 
-  flattenChatHistory(history: Turn[]): LlmMessageContentItem[] {
-    const result: LlmMessageContentItem[] = [];
-    history.forEach(turn => {
-      turn.historyItems.forEach(historyItem => {
-        result.push(...historyItem.llmMessageContent);
+  turnsToLlmContext(turns: EmuTurn[]): EmuLlmMessageContentItem[] {
+    const result: EmuLlmMessageContentItem[] = [];
+    turns.forEach(turn => {
+      turn.logBlock.logs.forEach(log => {
+        switch (log.metadata.type) {
+          case ('message'): {
+            result.push({
+              type: 'text',
+              text: log.text
+            });
+            break;
+          };
+          case ('tool-call'): {
+            result.push({
+              type: 'text',
+              text: `Tool: ${log.metadata.toolName} called with payload ${JSON.stringify(log.metadata.toolPayload)}`
+            });
+
+            if (log.metadata.screenshotData) {
+              result.push({
+                type: 'image',
+                image: log.metadata.screenshotData
+              })
+            }
+            break;
+          }
+        }
       })
     });
     return result;
   }
 
-  buildContextualPrompt(history: Turn[]): LlmMessageContentItem[] {
+  buildContextualPrompt(turns: EmuTurn[]): EmuLlmMessageContentItem[] {
     const taskPrompt = this.buildTaskPrompt();
-    const actionHistory = this.flattenChatHistory(history);
-    const result: LlmMessageContentItem[] = [
+    const actionHistory = this.turnsToLlmContext(turns);
+    const result: EmuLlmMessageContentItem[] = [
       { type: 'text', text: `Action history:` },
       ...actionHistory,
       { type: 'text', text: taskPrompt },
@@ -203,71 +220,34 @@ export class EmuAgent {
     return { success: true };
   }
 
-  async logTurn(turn: Turn) {
-    const EmuLogBlock: EmuLogBlock = {
-      title: `Agent Turn ${turn.iteration}`,
-      logs: []
-    };
-    
-    let screenshotIndex = 0;
-    for (const historyItem of turn.historyItems) {
-      for (const llmMessage of historyItem.llmMessageContent) {
-        if (llmMessage.image) {
-          EmuLogBlock.logs.push({
-            text: 'image',
-            metadata: {
-              [LogMetadata.SCREENSHOT_NAME]: historyItem.screenshotNames[screenshotIndex]
-            }
-          });
-          screenshotIndex++;
-        } else {
-          EmuLogBlock.logs.push({
-            text: llmMessage.text!
-          });
-        }
-      }
-    }
-
-    await this.logger.log(LogNamespace.AGENT, EmuLogBlock, true);
+  async logTurn(turn: EmuTurn) {
+    await this.logger.log(EmuLogNamespace.AGENT, { ...turn.logBlock, logs: turn.logBlock.logs.map((log) => ({ ...log, metadata: { ...log.metadata, screenshotData: undefined } })) }, true);
   }
   
   async runBenchmark(): Promise<boolean> {
-    this.logger.log(LogNamespace.DEV, 'Starting benchmark...');
+    this.logger.log(EmuLogNamespace.DEV, 'Starting benchmark...');
 
     let iteration = 1;
-    const history: Turn[] = [];
+    const history: EmuTurn[] = [];
     const tools = getTools(this.emulationService);
     
     this.mostRecentScreenshot = await this.loadScreenshot('0');
     
     while (iteration < this.agentConfig.maxIterations) {
-      this.logger.log(LogNamespace.DEV, `Iteration ${iteration}/${this.agentConfig.maxIterations}`);
+      this.logger.log(EmuLogNamespace.DEV, `Iteration ${iteration}/${this.agentConfig.maxIterations}`);
       
       const gameState = await this.getGameState();
       const prompt = this.buildContextualPrompt(history);
 
-      this.logger.log(LogNamespace.DEV, `------ Iteration ${iteration} ------`);
+      this.logger.log(EmuLogNamespace.DEV, `------ Iteration ${iteration} ------`);
       const response = await this.callLlm(prompt, tools);
+      this.logger.log(EmuLogNamespace.DEV, `------LLM Response: ${response.text}------`);
 
-      const turn: Turn = {
+      const logBlock = await this.generateLogBlock(response, iteration);
+      const turn: EmuTurn = {
         iteration,
-        historyItems: [],
+        logBlock,
       }
-
-      const historyItems = await this.generateHistoryItems(response, iteration);
-      turn.historyItems.push(...historyItems);
-
-      this.logger.log(LogNamespace.DEV, `------LLM Response: ${response.text}------`);
-      
-      // TODO: Record tool calls to history
-      // const toolHistoryItem = await this.generateHistoryItem({
-      //   type: 'tool_call',
-      //   content: response.text,
-      //   timestamp: currentTimestamp,
-      //   screenshotName
-      // });
-      // turn.historyItems.push(toolHistoryItem);
-
       history.push(turn);
       await this.logTurn(turn);
       
@@ -277,7 +257,7 @@ export class EmuAgent {
 
       iteration++;
     }
-    this.logger.log(LogNamespace.DEV, `Benchmark completed after ${iteration + 1} iterations`);
+    this.logger.log(EmuLogNamespace.DEV, `Benchmark completed after ${iteration + 1} iterations`);
     
     const result = this.generateBenchmarkResult(history);
     const resultFilePath = path.join(this.testStatePath, 'result.json');

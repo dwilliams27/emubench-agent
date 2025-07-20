@@ -27,6 +27,7 @@ export class FirebaseService {
       initializeApp();
     }
     this.db = getFirestore();
+    this.db.settings({ ignoreUndefinedProperties: true });
   }
 
   async write(options: {

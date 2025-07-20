@@ -1,23 +1,14 @@
 import { FirebaseCollection, FirebaseService, FirebaseSubCollection } from '@/services/firebase.service';
-import { EmuLogBlock } from '@/types/shared';
-
-export const LogNamespace = {
-  DEV: 'DEV',
-  AGENT: 'AGENT'
-};
-
-export const LogMetadata = {
-  SCREENSHOT_NAME: 'SCREENSHOT_NAME'
-};
+import { EmuLogBlock, EmuLogNamespace } from '@/types/shared';
 
 export class LoggerService {
   private logBuffer: Record<string, any[]> = {
-    [LogNamespace.DEV]: [],
-    [LogNamespace.AGENT]: []
+    [EmuLogNamespace.DEV]: [],
+    [EmuLogNamespace.AGENT]: []
   };
   private firestoreSubCollection = {
-    [LogNamespace.DEV]: FirebaseSubCollection.DEV_LOGS,
-    [LogNamespace.AGENT]: FirebaseSubCollection.AGENT_LOGS
+    [EmuLogNamespace.DEV]: FirebaseSubCollection.DEV_LOGS,
+    [EmuLogNamespace.AGENT]: FirebaseSubCollection.AGENT_LOGS
   }
 
   constructor(private testId: string, private firebaseService: FirebaseService) {}
