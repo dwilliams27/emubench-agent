@@ -4,8 +4,6 @@ export interface EmuLogItem {
     type: 'tool-call' | 'message';
     timestamp: string;
 
-    // @ts-ignore
-    screenshotData?: NonSharedBuffer;
     screenshotName?: string;
 
     toolName?: string;
@@ -61,9 +59,10 @@ export interface EmuTestState {
 }
 
 export interface EmuActiveTestReponse {
-  testState: EmuLogBlock[],
-  screenshots: Record<string, string>,
-  agentLogs: EmuLogBlock[],
+  testState: EmuLogBlock[];
+  screenshots: Record<string, string>;
+  agentLogs: EmuLogBlock[];
+  finished: boolean;
 }
 
 export interface EmuTurn {
