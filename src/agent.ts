@@ -1,7 +1,7 @@
 import { EmulationService } from '@/services/emulation.service';
 import { LoggerService } from '@/services/logger.service';
 import { getTools } from '@/tools';
-import { BenchmarkResult } from '@/types/types';
+import { BenchmarkResult } from '@/types/tools';
 import { EmuAgentConfig, EmuBootConfig, EmuTestConfig, EmuLogBlock, EmuTurn, EmuLlmMessageContentItem, EmuLogNamespace } from '@/types/shared';
 import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
@@ -68,7 +68,7 @@ export class EmuAgent {
   async generateLogBlock(llmResult: GenerateTextResult<ToolSet, unknown>, iteration: number): Promise<EmuLogBlock> {
     const timestamp = new Date().toISOString();
     const results: EmuLogBlock = {
-      title: `Iteration ${iteration}`,
+      title: `Turn ${iteration}`,
       logs: [{
         text: llmResult.text,
         metadata: {
@@ -84,7 +84,7 @@ export class EmuAgent {
         metadata: {
           type: 'tool-call',
           timestamp,
-          toolName: toolResult.name,
+          toolName: toolResult.toolName,
           toolPayload: toolResult.args
         }
       });

@@ -1,4 +1,4 @@
-import { IpcControllerInputRequest } from "@/types/types";
+import { IpcControllerInputRequest } from "@/types/tools";
 import axios, { AxiosInstance } from "axios";
 
 export interface PostControllerInputResponse {
