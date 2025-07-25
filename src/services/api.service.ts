@@ -33,4 +33,26 @@ export class ApiService {
     }
   }
 
+  async attemptTokenExchange(testId: string, exchangeToken: string | undefined) {
+    try {
+      console.log(`[Api] Attempting token exchange`);
+      const response = await this.axiosInstance.post(
+        `/test-orx/tests/${testId}/token-exchange`,
+        { exchangeToken },
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          } 
+        }
+      );
+      if (response.data.googleToken) {
+        return response.data;
+      }
+      return null;
+    } catch (error) {
+      const axiosError = error as any;
+      console.error(`[Api] Error with token exchange: ${axiosError.message} ${axiosError.response?.data}`);
+      return null;
+    }
+  }
 }

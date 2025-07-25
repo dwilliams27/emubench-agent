@@ -91,6 +91,7 @@ export class EmuAgent {
       if (toolResult.result?.screenshot) {
         const imageData = await this.loadScreenshot(toolResult.result.screenshot);
         if (imageData) {
+          // @ts-expect-error
           results.logs[results.logs.length - 1].metadata.screenshotData = imageData;
           // TODO: Awkward
           results.logs[results.logs.length - 1].metadata.screenshotName = `${parseInt(toolResult.result.screenshot) - 1}.png`;
@@ -179,9 +180,11 @@ export class EmuAgent {
               text: `Tool: ${log.metadata.toolName} called with payload ${JSON.stringify(log.metadata.toolPayload)}`
             });
 
+            // @ts-expect-error
             if (log.metadata.screenshotData) {
               result.push({
                 type: 'image',
+                // @ts-expect-error
                 image: log.metadata.screenshotData
               })
             }

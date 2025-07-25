@@ -1,20 +1,18 @@
 import { EmuAgent } from "@/agent";
 import { EmulationService } from "@/services/emulation.service";
 import { ApiService } from "@/services/api.service";
-import { EmuBootConfig, EmuTestState } from "@/types/shared";
+import { EmuBootConfig, EmuSharedTestState, EmuTestState } from "@/types/shared";
 import { configDotenv } from "dotenv";
 import { LoggerService } from "@/services/logger.service";
-import { FirebaseCollection, FirebaseFile, firebaseService, FirebaseService, FirebaseSubCollection } from "@/services/firebase.service";
+import { FirebaseCollection, FirebaseFile, firebaseService, FirebaseSubCollection } from "@/services/firebase.service";
 
 configDotenv();
 
 const authToken = process.env.AUTH_TOKEN;
-const googleToken = process.env.GOOGLE_TOKEN;
-const gameUrl = process.env.GAME_URL;
 const testPath = process.env.TEST_PATH;
 const testId = process.env.TEST_ID;
 
-if (!authToken || !googleToken || !gameUrl || !testPath || !testId) {
+if (!authToken || !testPath || !testId) {
   throw new Error('Missing required environment variables');
 }
 
@@ -25,20 +23,12 @@ const bootConfig = (await firebaseService.read({
   file: FirebaseFile.BOOT_CONFIG,
   testId,
 }))[0] as unknown as EmuBootConfig;
-const emulationService = new EmulationService(gameUrl, googleToken);
-const logger = new LoggerService(bootConfig.testConfig.id, firebaseService);
-const apiService = new ApiService("https://api.emubench.com", authToken);
-const agent = new EmuAgent(
-  bootConfig,
-  authToken,
-  testPath,
-  emulationService,
-  firebaseService,
-  logger
-);
 
 let testReady = false;
 let testStateContent;
+let sharedStateContent;
+let googleToken;
+const apiService = new ApiService("https://api.emubench.com", authToken);
 while (!testReady) {
   try {
     testStateContent = (await firebaseService.read({
@@ -47,19 +37,41 @@ while (!testReady) {
       file: FirebaseFile.TEST_STATE,
       testId: bootConfig.testConfig.id
     }))[0] as unknown as EmuTestState;
+    sharedStateContent = (await firebaseService.read({
+      collection: FirebaseCollection.SESSIONS,
+      subCollection: FirebaseSubCollection.STATE,
+      file: FirebaseFile.SHARED_STATE,
+      testId: bootConfig.testConfig.id
+    }))[0] as unknown as EmuSharedTestState;
+    googleToken = (await apiService.attemptTokenExchange(bootConfig.testConfig.id, sharedStateContent.exchangeToken))
     const status = testStateContent.status;
-    if (status === 'emulator-ready') {
+    if (testStateContent.status === 'emulator-ready' && sharedStateContent.emulatorUri && googleToken) {
       console.log('Test ready!');
       testReady = true;
     } else {
       console.log(`Waiting for test to be ready; current status: ${status}`);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 3000));
     }
   } catch (error) {
     console.error('Test file not found yet...');
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 3000));
   }
 }
+
+if (!sharedStateContent?.emulatorUri) {
+  throw new Error('Could not get emulator uri');
+}
+
+const emulationService = new EmulationService(sharedStateContent.emulatorUri, googleToken);
+const logger = new LoggerService(bootConfig.testConfig.id, firebaseService);
+const agent = new EmuAgent(
+  bootConfig,
+  authToken,
+  testPath,
+  emulationService,
+  firebaseService,
+  logger
+);
 
 await firebaseService.write({
   collection: FirebaseCollection.SESSIONS,
