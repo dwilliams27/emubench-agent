@@ -1,5 +1,5 @@
 import { FirebaseCollection, FirebaseService, FirebaseSubCollection } from '@/services/firebase.service';
-import { EmuLogBlock, EmuLogNamespace } from '@/types/shared';
+import { EmuLogBlock, EmuLogNamespace } from '@/shared/types';
 
 export class LoggerService {
   private logBuffer: Record<string, any[]> = {

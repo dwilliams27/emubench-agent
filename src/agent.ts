@@ -2,7 +2,7 @@ import { EmulationService } from '@/services/emulation.service';
 import { LoggerService } from '@/services/logger.service';
 import { getTools } from '@/tools';
 import { BenchmarkResult } from '@/types/tools';
-import { EmuAgentConfig, EmuBootConfig, EmuTestConfig, EmuLogBlock, EmuTurn, EmuLlmMessageContentItem, EmuLogNamespace } from '@/types/shared';
+import { EmuAgentConfig, EmuBootConfig, EmuTestConfig, EmuLogBlock, EmuTurn, EmuLlmMessageContentItem, EmuLogNamespace } from '@/shared/types';
 import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
