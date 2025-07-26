@@ -45,8 +45,8 @@ export class ApiService {
           } 
         }
       );
-      if (response.data.googleToken) {
-        return response.data;
+      if (response.data.token) {
+        return response.data.token;
       }
       return null;
     } catch (error) {
