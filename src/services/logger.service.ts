@@ -1,4 +1,4 @@
-import { FirebaseCollection, FirebaseService, FirebaseSubCollection } from '@/services/firebase.service';
+import { FirebaseCollection, firebaseService, FirebaseSubCollection } from '@/services/firebase.service';
 import { EmuLogBlock, EmuLogNamespace } from '@/shared/types';
 
 export class LoggerService {
@@ -11,7 +11,7 @@ export class LoggerService {
     [EmuLogNamespace.AGENT]: FirebaseSubCollection.AGENT_LOGS
   }
 
-  constructor(private testId: string, private firebaseService: FirebaseService) {}
+  constructor(private testId: string) {}
 
   async log(namespace: string, logEntry: any, immediateFlush = false) {
     if (!(namespace in this.logBuffer)) {
@@ -30,7 +30,7 @@ export class LoggerService {
 
     const logsToWrite = this.logBuffer[namespace].splice(0);
 
-    await this.firebaseService.write({
+    await firebaseService.write({
       collection: FirebaseCollection.SESSIONS,
       subCollection: this.firestoreSubCollection[namespace],
       testId: this.testId,

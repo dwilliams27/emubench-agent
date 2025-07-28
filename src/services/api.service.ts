@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from "axios";
 
 export class ApiService {
   private axiosInstance: AxiosInstance;
+  private screenshotCache: Record<string, string> = {};
 
   constructor(url: string, authToken: string) {
     this.axiosInstance = axios.create({
@@ -48,6 +49,53 @@ export class ApiService {
       if (response.data.token) {
         return response.data.token;
       }
+      return null;
+    } catch (error) {
+      const axiosError = error as any;
+      console.error(`[Api] Error with token exchange: ${axiosError.message} ${axiosError.response?.data}`);
+      return null;
+    }
+  }
+
+  async fetchScreenshots(testId: string): Promise<Record<string, string> | null> {
+    try {
+      console.log(`[Api] Fetching screenshots`);
+      const response = await this.axiosInstance.get(
+        `/test-orx/tests/${testId}/screenshots`,
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          } 
+        }
+      );
+      if (response.data.screenshots) {
+        // Fetch each screenshot from the URLs provided
+        console.log(`[Api] Fetched ${Object.keys(response.data.screenshots).length} screenshots`);
+        for (const key of Object.keys(response.data.screenshots)) {
+          const screenshotUrl = response.data.screenshots[key];
+          if (this.screenshotCache[screenshotUrl]) {
+            response.data.screenshots[key] = this.screenshotCache[screenshotUrl];
+            continue;
+          }
+          try {
+            const screenshotResponse = await this.axiosInstance.get(screenshotUrl, {
+              responseType: 'arraybuffer',
+              headers: {
+                'Content-Type': 'application/octet-stream',
+              }
+            });
+            const base64Screenshot = `data:image/png;base64,${Buffer.from(screenshotResponse.data, 'binary').toString('base64')}`;
+            this.screenshotCache[screenshotUrl] = base64Screenshot;
+            response.data.screenshots[key] = base64Screenshot;
+          } catch (screenshotError) {
+            console.error(`[Api] Error fetching screenshot ${key}: ${(screenshotError as any).message}`);
+            response.data.screenshots[key] = null;
+          }
+        }
+        console.log(`[Api] Successfully fetched screenshots`);
+        return response.data.screenshots;
+      }
+      console.error(`[Api] No screenshots found in response`);
       return null;
     } catch (error) {
       const axiosError = error as any;

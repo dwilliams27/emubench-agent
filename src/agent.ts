@@ -7,22 +7,22 @@ import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
 import { generateText, GenerateTextResult, ToolSet } from 'ai';
-import { readFileSync, writeFileSync } from 'fs';
-import path from 'path';
-import { FirebaseCollection, FirebaseFile, FirebaseService, FirebaseSubCollection } from '@/services/firebase.service';
+import { FirebaseCollection, FirebaseFile, firebaseService, FirebaseSubCollection } from '@/services/firebase.service';
+import { ApiService } from '@/services/api.service';
 
 export class EmuAgent {
   private agentConfig: EmuAgentConfig;
   private testConfig: EmuTestConfig;
 
-  private mostRecentScreenshot?: NonSharedBuffer;
+  private mostRecentScreenshot?: string;
+  private screenshotCache: Record<string, string> = {};
 
   constructor(
     private bootConfig: EmuBootConfig,
     private authToken: string,
     private testStatePath: string,
     private emulationService: EmulationService,
-    private firbaseService: FirebaseService,
+    private apiService: ApiService,
     private logger: LoggerService
   ) {
     this.agentConfig = bootConfig.agentConfig;
@@ -49,15 +49,28 @@ export class EmuAgent {
   }
 
   async loadScreenshot(name: string) {
-    const screenshotPath = path.join(this.testStatePath, 'ScreenShots');
+    const filename = `${name}.png`;
+    if (this.screenshotCache[filename]) {
+      return this.screenshotCache[filename];
+    }
     let imageData;
     let retries = 2;
     while (!imageData && retries > 0) {
       try {
-        imageData = readFileSync(path.join(screenshotPath, `${name}.png`));
+        const screenshotData = await this.apiService.fetchScreenshots(this.bootConfig.testConfig.id);
+        if (!screenshotData) {
+          console.log(`No screenshots found, trying again`);
+          continue;
+        }
+        this.screenshotCache = { ...this.screenshotCache, ...screenshotData };
+        if (!screenshotData[filename]) {
+          console.log(`Screenshot ${filename} not found in cache, trying again`);
+          continue;
+        }
+        imageData = screenshotData[filename];
       } catch (error) {
         retries -= 1;
-        // Wait in case FUSE hasnt picked up new screenshot yet
+        // Wait in case screenshot doesnt have public url yet
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
@@ -97,16 +110,18 @@ export class EmuAgent {
           results.logs[results.logs.length - 1].metadata.screenshotName = `${parseInt(toolResult.result.screenshot) - 1}.png`;
 
           this.mostRecentScreenshot = imageData;
+        } else {
+          console.warn(`[Agent] Screenshot ${toolResult.result.screenshot} not found`);
         }
       }
       if (toolResult.result?.endStateMemWatchValues && toolResult.result?.contextMemWatchValues) {
-        const oldState = (await this.firbaseService.read({
+        const oldState = (await firebaseService.read({
           collection: FirebaseCollection.SESSIONS,
           subCollection: FirebaseSubCollection.STATE,
           file: FirebaseFile.TEST_STATE,
           testId: this.bootConfig.testConfig.id,
         }))[0];
-        await this.firbaseService.write({
+        await firebaseService.write({
           collection: FirebaseCollection.SESSIONS,
           subCollection: FirebaseSubCollection.STATE,
           file: FirebaseFile.TEST_STATE,
@@ -262,9 +277,10 @@ export class EmuAgent {
     }
     this.logger.log(EmuLogNamespace.DEV, `Benchmark completed after ${iteration + 1} iterations`);
     
-    const result = this.generateBenchmarkResult(history);
-    const resultFilePath = path.join(this.testStatePath, 'result.json');
-    writeFileSync(resultFilePath, JSON.stringify(result, null, 2));
+    // TODO: Put result into firebase
+    // const result = this.generateBenchmarkResult(history);
+    // const resultFilePath = path.join(this.testStatePath, 'result.json');
+    // writeFileSync(resultFilePath, JSON.stringify(result, null, 2));
 
     return true;
   }

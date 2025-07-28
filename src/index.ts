@@ -63,13 +63,13 @@ if (!sharedStateContent?.emulatorUri) {
 }
 
 const emulationService = new EmulationService(sharedStateContent.emulatorUri, googleToken);
-const logger = new LoggerService(bootConfig.testConfig.id, firebaseService);
+const logger = new LoggerService(bootConfig.testConfig.id);
 const agent = new EmuAgent(
   bootConfig,
   authToken,
   testPath,
   emulationService,
-  firebaseService,
+  apiService,
   logger
 );
 
