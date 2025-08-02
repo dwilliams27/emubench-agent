@@ -23,9 +23,9 @@ export function emuEvaluateCondition(condition?: EmuCondition): EmuConditionPrim
 export function emuEvaluateOperand(inputs: EmuConditionInputSet, operand: EmuConditionOperand): EmuConditionPrimitiveResult {
    if (typeof operand === 'object' && 'lhs' in operand && 'operation' in operand) {
     // If part
-    const lhsResult = emuEvaluateOperand(inputs, operand.lhs);
+    const lhsResult = operand.lhs ? emuEvaluateOperand(inputs, operand.lhs) : undefined;
     const rhsResult = operand.rhs ? emuEvaluateOperand(inputs, operand.rhs) : undefined;
-    return operand.operation(inputs, lhsResult, rhsResult);
+    return operand.operation.func(inputs, { lhs: lhsResult, rhs: rhsResult });
   } else if (typeof operand === 'number' || typeof operand === 'string' || typeof operand === 'boolean') {
     // If primitive
     return operand;
@@ -43,10 +43,6 @@ export function emuEvaluateOperand(inputs: EmuConditionInputSet, operand: EmuCon
 export function emuParseAndPopulateConditionInput(input: EmuConditionInput): EmuConditionPrimitiveResult {
   if (input.parsedValue !== undefined) {
     return input.parsedValue;
-  }
-  if (input.pointerDepth) {
-    // TODO: Pre-parse and fill?
-    throw new Error(`Pointer depth not supported: ${input.pointerDepth}`);
   }
   switch (input.type) {
     case 'int': {
