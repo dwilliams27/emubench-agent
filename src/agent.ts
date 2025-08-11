@@ -9,6 +9,7 @@ import { openai } from '@ai-sdk/openai';
 import { generateText, GenerateTextResult, ToolSet } from 'ai';
 import { FirebaseCollection, FirebaseFile, firebaseService, FirebaseSubCollection } from '@/services/firebase.service';
 import { ApiService } from '@/services/api.service';
+import { emuEvaluateCondition } from '@/shared/conditions/evaluate';
 
 export class EmuAgent {
   private agentConfig: EmuAgentConfig;
@@ -16,6 +17,8 @@ export class EmuAgent {
 
   private mostRecentScreenshot?: string;
   private screenshotCache: Record<string, string> = {};
+
+  private currentContextMemWatches: Record<string, string> = {};
 
   constructor(
     private bootConfig: EmuBootConfig,
@@ -121,6 +124,7 @@ export class EmuAgent {
           file: FirebaseFile.TEST_STATE,
           testId: this.bootConfig.testConfig.id,
         }))[0];
+        this.currentContextMemWatches = toolResult.result?.contextMemWatchValues;
         await firebaseService.write({
           collection: FirebaseCollection.SESSIONS,
           subCollection: FirebaseSubCollection.STATE,
@@ -228,8 +232,14 @@ export class EmuAgent {
     return result;
   }
 
-  async checkTaskCompletion(responseText: string): Promise<boolean> {
-    // TODO
+  async checkTaskCompletion(): Promise<boolean> {
+    const condition = this.bootConfig.goalConfig.condition;
+    for (const key in condition.inputs) {
+      const input = condition.inputs[key];
+      input.rawValue = this.currentContextMemWatches[input.name] || input.rawValue;
+    }
+    const result = emuEvaluateCondition(condition);
+    console.log(`----- Condition evaluation result: ${result} -----`);
     return false;
   }
 
@@ -270,7 +280,7 @@ export class EmuAgent {
       await this.logTurn(turn);
       
       // Check if task completed
-      const isComplete = await this.checkTaskCompletion(response.text);
+      const isComplete = await this.checkTaskCompletion();
       if (isComplete) break;
 
       iteration++;
