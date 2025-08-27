@@ -223,11 +223,12 @@ export class EmuAgent {
       ...actionHistory,
       { type: 'text', text: `</action_history>` },
       { type: 'text', text: taskPrompt },
-      { type: 'text', text: "Most recent screenshot:" }
+      { type: 'text', text: "<most_recent_screenshot>" }
     ];
     if (this.mostRecentScreenshot) {
       result.push({ type: 'image', image: this.mostRecentScreenshot });
     }
+    result.push({ type: 'text', text: "</most_recent_screenshot>" });
     result.push({ type: 'text', text: "Decide what to do to best proceed towards your goal" });
 
     return result;
