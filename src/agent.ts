@@ -219,8 +219,9 @@ export class EmuAgent {
     const taskPrompt = this.buildTaskPrompt();
     const actionHistory = this.turnsToLlmContext(turns);
     const result: EmuLlmMessageContentItem[] = [
-      { type: 'text', text: `Action history:` },
+      { type: 'text', text: `<action_history>` },
       ...actionHistory,
+      { type: 'text', text: `</action_history>` },
       { type: 'text', text: taskPrompt },
       { type: 'text', text: "Most recent screenshot:" }
     ];
