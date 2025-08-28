@@ -1,3 +1,4 @@
+import { formatError } from "@/shared/utils/error";
 import { IpcControllerInputRequest } from "@/types/tools";
 import axios, { AxiosInstance } from "axios";
 
@@ -37,7 +38,7 @@ export class EmulationService {
       );
       return response.data;
     } catch (error) {
-      console.error('[Emulation] Error sending controller input:', error);
+      console.error('[Emulation] Error sending controller input:', formatError(error));
       return null;
     }
   }
@@ -55,7 +56,7 @@ export class EmulationService {
         }
       );
     } catch (error) {
-      console.error('Error saving state to slot:', error);
+      console.error('Error saving state to slot:', formatError(error));
       return null;
     }
   }
@@ -73,7 +74,7 @@ export class EmulationService {
         }
       );
     } catch (error) {
-      console.error('Error loading state from slot:', error);
+      console.error('Error loading state from slot:', formatError(error));
       return null;
     }
   }
@@ -91,7 +92,7 @@ export class EmulationService {
         }
       );
     } catch (error) {
-      console.error('Error saving state to file:', error);
+      console.error('Error saving state to file:', formatError(error));
       return null;
     }
   }
@@ -109,7 +110,7 @@ export class EmulationService {
         }
       );
     } catch (error) {
-      console.error('Error loading state from file:', error);
+      console.error('Error loading state from file:', formatError(error));
       return null;
     }
   }
@@ -127,7 +128,7 @@ export class EmulationService {
         }
       );
     } catch (error) {
-      console.error('Error setting emulation speed:', error);
+      console.error('Error setting emulation speed:', formatError(error));
       return null;
     }
   }
@@ -145,7 +146,7 @@ export class EmulationService {
         }
       );
     } catch (error) {
-      console.error('Error setting emulation state:', error);
+      console.error('Error setting emulation state:', formatError(error));
       return null;
     }
   }
