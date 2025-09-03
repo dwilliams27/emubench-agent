@@ -5,6 +5,7 @@ import { EmuBootConfig, EmuSharedTestState, EmuTestState } from "@/shared/types"
 import { configDotenv } from "dotenv";
 import { LoggerService } from "@/services/logger.service";
 import { FirebaseCollection, FirebaseFile, firebaseService, FirebaseSubCollection } from "@/services/firebase.service";
+import { formatError } from "@/shared/utils/error";
 
 configDotenv();
 
@@ -66,8 +67,6 @@ const emulationService = new EmulationService(sharedStateContent.emulatorUri, go
 const logger = new LoggerService(bootConfig.testConfig.id);
 const agent = new EmuAgent(
   bootConfig,
-  authToken,
-  testPath,
   emulationService,
   apiService,
   logger
@@ -91,7 +90,7 @@ try {
   console.log('Test finished');
   process.exit(0);
 } catch (error) {
-  console.log(`Test failed: ${(error as any).message}`);
+  console.error(`Test failed: ${formatError(error)}`);
   await apiService.endTest(bootConfig.testConfig.id);
   process.exit(1);
 }

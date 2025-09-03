@@ -10,6 +10,7 @@ import { generateText, GenerateTextResult, ToolSet } from 'ai';
 import { FirebaseCollection, FirebaseFile, firebaseService, FirebaseSubCollection } from '@/services/firebase.service';
 import { ApiService } from '@/services/api.service';
 import { emuEvaluateCondition } from '@/shared/conditions/evaluate';
+import { formatError } from '@/shared/utils/error';
 
 export class EmuAgent {
   private agentConfig: EmuAgentConfig;
@@ -22,8 +23,6 @@ export class EmuAgent {
 
   constructor(
     private bootConfig: EmuBootConfig,
-    private authToken: string,
-    private testStatePath: string,
     private emulationService: EmulationService,
     private apiService: ApiService,
     private logger: LoggerService
@@ -81,7 +80,7 @@ export class EmuAgent {
     return imageData;
   }
 
-  async generateLogBlock(llmResult: GenerateTextResult<ToolSet, unknown>, iteration: number): Promise<EmuLogBlock> {
+  async handleLlmResponse(llmResult: GenerateTextResult<ToolSet, unknown>, iteration: number): Promise<EmuLogBlock> {
     const timestamp = new Date().toISOString();
     const results: EmuLogBlock = {
       title: `Turn ${iteration}`,
@@ -117,7 +116,7 @@ export class EmuAgent {
           console.warn(`[Agent] Screenshot ${toolResult.result.screenshot} not found`);
         }
       }
-      if (toolResult.result?.endStateMemWatchValues && toolResult.result?.contextMemWatchValues) {
+      if (toolResult.result?.endStateMemWatchValues || toolResult.result?.contextMemWatchValues) {
         const oldState = (await firebaseService.read({
           collection: FirebaseCollection.SESSIONS,
           subCollection: FirebaseSubCollection.STATE,
@@ -244,7 +243,7 @@ export class EmuAgent {
       const result = emuEvaluateCondition(condition);
       console.log(`----- Condition evaluation result: ${result} -----`);
     } catch (error) {
-      console.error('Error evaluating condition:', error);
+      console.error('Error evaluating condition:', formatError(error));
       return false;
     }
     // TODO: Return actual condition evaluation
@@ -279,7 +278,7 @@ export class EmuAgent {
       const response = await this.callLlm(prompt, tools);
       this.logger.log(EmuLogNamespace.DEV, `------LLM Response: ${response.text}------`);
 
-      const logBlock = await this.generateLogBlock(response, iteration);
+      const logBlock = await this.handleLlmResponse(response, iteration);
       const turn: EmuTurn = {
         iteration,
         logBlock,

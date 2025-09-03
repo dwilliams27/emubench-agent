@@ -1,3 +1,4 @@
+import { formatError } from "@/shared/utils/error";
 import axios, { AxiosInstance } from "axios";
 
 export class ApiService {
@@ -29,7 +30,7 @@ export class ApiService {
       return response.data;
     } catch (error) {
       const axiosError = error as any;
-      console.error(`[Api] Error ending test: ${axiosError.message} ${axiosError.response?.data}`);
+      console.error(`[Api] Error ending test: ${formatError(axiosError)}`);
       return null;
     }
   }
@@ -52,7 +53,7 @@ export class ApiService {
       return null;
     } catch (error) {
       const axiosError = error as any;
-      console.error(`[Api] Error with token exchange: ${axiosError.message} ${axiosError.response?.data}`);
+      console.error(`[Api] Error with token exchange: ${formatError(axiosError)}`);
       return null;
     }
   }
@@ -88,7 +89,7 @@ export class ApiService {
             this.screenshotCache[screenshotUrl] = base64Screenshot;
             response.data.screenshots[key] = base64Screenshot;
           } catch (screenshotError) {
-            console.error(`[Api] Error fetching screenshot ${key}: ${(screenshotError as any).message}`);
+            console.error(`[Api] Error fetching screenshot ${key}: ${formatError(screenshotError)}`);
             response.data.screenshots[key] = null;
           }
         }
@@ -99,7 +100,7 @@ export class ApiService {
       return null;
     } catch (error) {
       const axiosError = error as any;
-      console.error(`[Api] Error with token exchange: ${axiosError.message} ${axiosError.response?.data}`);
+      console.error(`[Api] Error with token exchange: ${formatError(axiosError)}`);
       return null;
     }
   }
