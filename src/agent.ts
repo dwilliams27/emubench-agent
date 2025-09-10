@@ -122,8 +122,9 @@ export class EmuAgent {
           subCollection: FirebaseSubCollection.STATE,
           file: FirebaseFile.TEST_STATE,
           testId: this.bootConfig.testConfig.id,
-        }))[0];
+        }))[0] as any;
         this.currentContextMemWatches = toolResult.result?.contextMemWatchValues;
+
         await firebaseService.write({
           collection: FirebaseCollection.SESSIONS,
           subCollection: FirebaseSubCollection.STATE,
@@ -131,10 +132,14 @@ export class EmuAgent {
           testId: this.bootConfig.testConfig.id,
           payload: [{
             ...oldState,
-            [iteration]: {
-              contextMemWatchValues: toolResult.result?.contextMemWatchValues,
-              endStateMemWatchValues: toolResult.result?.endStateMemWatchValues
+            stateHistory: {
+              ...oldState.stateHistory,
+              [iteration]: {
+                contextMemWatchValues: toolResult.result?.contextMemWatchValues,
+                endStateMemWatchValues: toolResult.result?.endStateMemWatchValues
+              }
             }
+            
           }]
         });
       }
