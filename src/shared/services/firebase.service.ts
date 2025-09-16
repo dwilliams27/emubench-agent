@@ -2,7 +2,8 @@ import { initializeApp, getApps } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 
 export const FirebaseCollection = {
-  SESSIONS: 'SESSIONS'
+  SESSIONS: 'SESSIONS',
+  HISTORY: 'HISTORY',
 };
 
 export const FirebaseSubCollection = {
@@ -28,7 +29,6 @@ export class FirebaseService {
       initializeApp();
     }
     this.db = getFirestore();
-    this.db.settings({ ignoreUndefinedProperties: true });
   }
 
   async write(options: {

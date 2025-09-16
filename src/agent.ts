@@ -7,7 +7,7 @@ import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
 import { generateText, GenerateTextResult, ToolSet } from 'ai';
-import { FirebaseCollection, FirebaseFile, firebaseService, FirebaseSubCollection } from '@/services/firebase.service';
+import { FirebaseCollection, FirebaseFile, firebaseService, FirebaseSubCollection } from '@/shared/services/firebase.service';
 import { ApiService } from '@/services/api.service';
 import { emuEvaluateCondition } from '@/shared/conditions/evaluate';
 import { formatError } from '@/shared/utils/error';

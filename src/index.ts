@@ -4,7 +4,7 @@ import { ApiService } from "@/services/api.service";
 import { EmuBootConfig, EmuSharedTestState, EmuTestState } from "@/shared/types";
 import { configDotenv } from "dotenv";
 import { LoggerService } from "@/services/logger.service";
-import { FirebaseCollection, FirebaseFile, firebaseService, FirebaseSubCollection } from "@/services/firebase.service";
+import { FirebaseCollection, FirebaseFile, firebaseService, FirebaseSubCollection } from "@/shared/services/firebase.service";
 import { formatError } from "@/shared/utils/error";
 
 configDotenv();
