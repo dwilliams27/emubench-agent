@@ -7,10 +7,11 @@ import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
 import { generateText, GenerateTextResult, ToolSet } from 'ai';
-import { FirebaseCollection, FirebaseFile, firebaseService, FirebaseSubCollection } from '@/shared/services/firebase.service';
 import { ApiService } from '@/services/api.service';
 import { emuEvaluateCondition } from '@/shared/conditions/evaluate';
 import { formatError } from '@/shared/utils/error';
+import { genId, LOG_BLOCK_ID } from '@/shared/utils/id';
+import { freadTestState, fwriteTestState } from '@/shared/services/resource-locator.service';
 
 export class EmuAgent {
   private agentConfig: EmuAgentConfig;
@@ -83,6 +84,7 @@ export class EmuAgent {
   async handleLlmResponse(llmResult: GenerateTextResult<ToolSet, unknown>, iteration: number): Promise<EmuLogBlock> {
     const timestamp = new Date().toISOString();
     const results: EmuLogBlock = {
+      id: genId(LOG_BLOCK_ID),
       title: `Turn ${iteration}`,
       logs: [{
         text: llmResult.text,
@@ -117,31 +119,28 @@ export class EmuAgent {
         }
       }
       if (toolResult.result?.endStateMemWatchValues || toolResult.result?.contextMemWatchValues) {
-        const oldState = (await firebaseService.read({
-          collection: FirebaseCollection.SESSIONS,
-          subCollection: FirebaseSubCollection.STATE,
-          file: FirebaseFile.TEST_STATE,
-          testId: this.bootConfig.testConfig.id,
-        }))[0] as any;
         this.currentContextMemWatches = toolResult.result?.contextMemWatchValues;
 
-        await firebaseService.write({
-          collection: FirebaseCollection.SESSIONS,
-          subCollection: FirebaseSubCollection.STATE,
-          file: FirebaseFile.TEST_STATE,
-          testId: this.bootConfig.testConfig.id,
-          payload: [{
-            ...oldState,
-            stateHistory: {
-              ...oldState.stateHistory,
-              [iteration]: {
-                contextMemWatchValues: toolResult.result?.contextMemWatchValues,
-                endStateMemWatchValues: toolResult.result?.endStateMemWatchValues
-              }
+        // TODO: Partial updates
+        const oldState = await freadTestState(this.bootConfig.testConfig.id);
+        if (!oldState) {
+          console.error('[Agent] Could not read old test state');
+          continue;
+        }
+
+        const result = await fwriteTestState(this.bootConfig.testConfig.id, {
+          ...oldState,
+          stateHistory: {
+            ...oldState.stateHistory,
+            [iteration]: {
+              contextMemWatchValues: toolResult.result?.contextMemWatchValues,
+              endStateMemWatchValues: toolResult.result?.endStateMemWatchValues
             }
-            
-          }]
+          }
         });
+        if (!result) {
+          console.error('[Agent] Could not write updated test state');
+        }
       }
     }
 

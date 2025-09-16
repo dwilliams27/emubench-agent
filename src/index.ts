@@ -1,11 +1,11 @@
 import { EmuAgent } from "@/agent";
 import { EmulationService } from "@/services/emulation.service";
 import { ApiService } from "@/services/api.service";
-import { EmuBootConfig, EmuSharedTestState, EmuTestState } from "@/shared/types";
+import { EmuSharedTestState, EmuTestState } from "@/shared/types";
 import { configDotenv } from "dotenv";
 import { LoggerService } from "@/services/logger.service";
-import { FirebaseCollection, FirebaseFile, firebaseService, FirebaseSubCollection } from "@/shared/services/firebase.service";
 import { formatError } from "@/shared/utils/error";
+import { freadBootConfig, freadSharedTestState, freadTestState, fwriteTestState } from "@/shared/services/resource-locator.service";
 
 configDotenv();
 
@@ -17,34 +17,25 @@ if (!authToken || !testPath || !testId) {
   throw new Error('Missing required environment variables');
 }
 
-// Init services
-const bootConfig = (await firebaseService.read({
-  collection: FirebaseCollection.SESSIONS,
-  subCollection: FirebaseSubCollection.CONFIG,
-  file: FirebaseFile.BOOT_CONFIG,
-  testId,
-}))[0] as unknown as EmuBootConfig;
+const bootConfig = await freadBootConfig(testId);
+if (!bootConfig) {
+  throw new Error('Could not read boot config');
+}
 
 let testReady = false;
-let testStateContent;
-let sharedStateContent;
+let testStateContent: EmuTestState | null = null;
+let sharedStateContent: EmuSharedTestState | null = null;
 let googleToken;
 const apiService = new ApiService("https://api.emubench.com", authToken);
 while (!testReady) {
   try {
-    testStateContent = (await firebaseService.read({
-      collection: FirebaseCollection.SESSIONS,
-      subCollection: FirebaseSubCollection.STATE,
-      file: FirebaseFile.TEST_STATE,
-      testId: bootConfig.testConfig.id
-    }))[0] as unknown as EmuTestState;
-    sharedStateContent = (await firebaseService.read({
-      collection: FirebaseCollection.SESSIONS,
-      subCollection: FirebaseSubCollection.STATE,
-      file: FirebaseFile.SHARED_STATE,
-      testId: bootConfig.testConfig.id
-    }))[0] as unknown as EmuSharedTestState;
-    googleToken = (await apiService.attemptTokenExchange(bootConfig.testConfig.id, sharedStateContent.exchangeToken))
+    testStateContent = await freadTestState(bootConfig.testConfig.id);
+    sharedStateContent = await freadSharedTestState(bootConfig.testConfig.id);
+    if (!testStateContent || !sharedStateContent) {
+      throw new Error('Could not read test state or shared state');
+    }
+
+    googleToken = await apiService.attemptTokenExchange(bootConfig.testConfig.id, sharedStateContent.exchangeToken);
     const status = testStateContent.status;
     if (testStateContent.status === 'emulator-ready' && sharedStateContent.emulatorUri && googleToken) {
       console.log('Test ready!');
@@ -72,16 +63,13 @@ const agent = new EmuAgent(
   logger
 );
 
-await firebaseService.write({
-  collection: FirebaseCollection.SESSIONS,
-  subCollection: FirebaseSubCollection.STATE,
-  file: FirebaseFile.AGENT_STATE,
-  testId: bootConfig.testConfig.id,
-  payload: [{
-    ...testStateContent,
-    status: 'running'
-  }]
+const result = await fwriteTestState(bootConfig.testConfig.id, {
+  ...testStateContent!,
+  status: 'running'
 });
+if (!result) {
+  throw new Error('Could not update test state to running');
+}
 
 try {
   await agent.runBenchmark();

@@ -1,4 +1,4 @@
-import { FirebaseCollection, firebaseService, FirebaseSubCollection } from '@/services/firebase.service';
+import { freadAgentLogs, freadDevLogs, fwriteAgentLogs, fwriteDevLogs } from '@/shared/services/resource-locator.service';
 import { EmuLogBlock, EmuLogNamespace } from '@/shared/types';
 
 export class LoggerService {
@@ -6,9 +6,9 @@ export class LoggerService {
     [EmuLogNamespace.DEV]: [],
     [EmuLogNamespace.AGENT]: []
   };
-  private firestoreSubCollection = {
-    [EmuLogNamespace.DEV]: FirebaseSubCollection.DEV_LOGS,
-    [EmuLogNamespace.AGENT]: FirebaseSubCollection.AGENT_LOGS
+  private firestoreCollectionMap = {
+    [EmuLogNamespace.DEV]: { read: freadDevLogs, write: fwriteDevLogs },
+    [EmuLogNamespace.AGENT]: { read: freadAgentLogs, write: fwriteAgentLogs }
   }
 
   constructor(private testId: string) {}
@@ -29,12 +29,6 @@ export class LoggerService {
     if (this.logBuffer[namespace].length === 0) return;
 
     const logsToWrite = this.logBuffer[namespace].splice(0);
-
-    await firebaseService.write({
-      collection: FirebaseCollection.SESSIONS,
-      subCollection: this.firestoreSubCollection[namespace],
-      testId: this.testId,
-      payload: logsToWrite
-    });
+    await this.firestoreCollectionMap[namespace].write(this.testId, logsToWrite);
   }
 }
