@@ -45,7 +45,7 @@ while (!testReady) {
       await new Promise(resolve => setTimeout(resolve, 3000));
     }
   } catch (error) {
-    console.error('Test file not found yet...');
+    console.error(`Test file not found yet... cause: ${formatError(error)}`);
     await new Promise(resolve => setTimeout(resolve, 3000));
   }
 }
