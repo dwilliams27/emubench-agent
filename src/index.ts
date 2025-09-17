@@ -1,11 +1,11 @@
 import { EmuAgent } from "@/agent";
 import { EmulationService } from "@/services/emulation.service";
 import { ApiService } from "@/services/api.service";
-import { EmuSharedTestState, EmuTestState } from "@/shared/types";
+import { EmuEmulatorState, EmuSharedTestState, EmuTestState } from "@/shared/types";
 import { configDotenv } from "dotenv";
 import { LoggerService } from "@/services/logger.service";
 import { formatError } from "@/shared/utils/error";
-import { freadBootConfig, freadSharedTestState, freadTestState, fwriteTestState } from "@/shared/services/resource-locator.service";
+import { freadBootConfig, freadEmulatorState, freadSharedTestState, freadTestState, fwriteTestState } from "@/shared/services/resource-locator.service";
 
 configDotenv();
 
@@ -23,21 +23,21 @@ if (!bootConfig) {
 }
 
 let testReady = false;
-let testStateContent: EmuTestState | null = null;
-let sharedStateContent: EmuSharedTestState | null = null;
+let emulatorState: EmuEmulatorState | null = null;
+let sharedState: EmuSharedTestState | null = null;
 let googleToken;
 const apiService = new ApiService("https://api.emubench.com", authToken);
 while (!testReady) {
   try {
-    testStateContent = await freadTestState(bootConfig.testConfig.id);
-    sharedStateContent = await freadSharedTestState(bootConfig.testConfig.id);
-    if (!testStateContent || !sharedStateContent) {
-      throw new Error('Could not read test state or shared state');
+    emulatorState = await freadEmulatorState(bootConfig.testConfig.id);
+    sharedState = await freadSharedTestState(bootConfig.testConfig.id);
+    if (!emulatorState || !sharedState) {
+      throw new Error('Could not read emulator state or shared state');
     }
 
-    googleToken = await apiService.attemptTokenExchange(bootConfig.testConfig.id, sharedStateContent.exchangeToken);
-    const status = testStateContent.status;
-    if (testStateContent.status === 'emulator-ready' && sharedStateContent.emulatorUri && googleToken) {
+    googleToken = await apiService.attemptTokenExchange(bootConfig.testConfig.id, sharedState.exchangeToken);
+    const status = emulatorState.status;
+    if (status === 'emulator-ready' && sharedState.emulatorUri && googleToken) {
       console.log('Test ready!');
       testReady = true;
     } else {
@@ -50,11 +50,11 @@ while (!testReady) {
   }
 }
 
-if (!sharedStateContent?.emulatorUri) {
+if (!sharedState?.emulatorUri) {
   throw new Error('Could not get emulator uri');
 }
 
-const emulationService = new EmulationService(sharedStateContent.emulatorUri, googleToken);
+const emulationService = new EmulationService(sharedState.emulatorUri, googleToken);
 const logger = new LoggerService(bootConfig.testConfig.id);
 const agent = new EmuAgent(
   bootConfig,
@@ -63,8 +63,13 @@ const agent = new EmuAgent(
   logger
 );
 
+// TODO: Partial updates
+const testState = await freadTestState(bootConfig.testConfig.id);
+if (!testState) {
+  throw new Error('Could not read test state');
+}
 const result = await fwriteTestState(bootConfig.testConfig.id, {
-  ...testStateContent!,
+  ...testState!,
   status: 'running'
 });
 if (!result) {
