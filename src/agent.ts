@@ -260,7 +260,19 @@ export class EmuAgent {
   }
 
   async logTurn(turn: EmuTurn) {
-    await this.logger.log(EmuLogNamespace.AGENT, { ...turn.logBlock, logs: turn.logBlock.logs.map((log) => ({ ...log, metadata: { ...log.metadata, screenshotData: undefined } })) }, true);
+    await this.logger.log(
+      EmuLogNamespace.AGENT,
+      {
+        ...turn.logBlock,
+        logs: turn.logBlock.logs.map((log) => {
+          const logCopy = { ...log };
+          // @ts-expect-error TODO: Fix this
+          delete logCopy.metadata.screenshotData;
+          return logCopy;
+        })
+      },
+      true
+    );
   }
   
   async runBenchmark(): Promise<boolean> {
