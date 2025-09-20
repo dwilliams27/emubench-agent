@@ -15,7 +15,7 @@ export function getTools(emulationService: EmulationService) {
           ...((actions.buttons || actions.triggers) ? { buttons: { ...actions.buttons, ...actions.triggers } } : {}),
           ...(actions.mainStick?.direction ? { mainStick: directionToStickPosition(actions.mainStick?.direction) } : {}),
           ...(actions.cStick?.direction ? { cStick: directionToStickPosition(actions.cStick?.direction) } : {}),
-          frames: parseInt(duration),
+          frames: duration,
         }
         
         const inputResponse = await emulationService.postControllerInput(ipcRequest);
@@ -26,7 +26,7 @@ export function getTools(emulationService: EmulationService) {
     wait: tool({
       description: 'Wait for a specific number of frames',
       parameters: z.object({
-        frames: z.number().min(1).describe("The number of frames to wait for"),
+        frames: z.number().min(1).max(240).describe("The number of frames to wait for"),
       }),
       execute: async ({ frames }) => {
         const ipcRequest = {

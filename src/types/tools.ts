@@ -72,5 +72,5 @@ export const ControllerInputSchema = z.object({
         r: z.boolean().optional().describe("Press/release the Right Trigger"),
     }).optional().describe("Specify analog trigger pressure. Omit to leave unchanged."),
   }).describe("Define the controller actions to perform. Only include the controls you want to change."),
-  duration: z.enum(["5", "15", "30", "60"]).describe("How how many frames to press the buttons."),
+  duration: z.number().min(5).max(60).describe("How how many frames (MUST be between 5-60 frames) to press the buttons."),
 });
