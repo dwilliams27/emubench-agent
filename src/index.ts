@@ -71,32 +71,36 @@ try {
     logger
   );
 
-  // TODO: Partial updates
-  const testState = await freadTestState(bootConfig.testConfig.id);
+  const [testState, freshEmulatorState] = await Promise.all([
+    freadTestState(bootConfig.testConfig.id),
+    freadEmulatorState(bootConfig.testConfig.id)
+  ]);
   if (!testState) {
     throw new Error('Could not read test state');
   }
-  const testStateResult = await fwriteTestState(bootConfig.testConfig.id, {
-    ...testState!,
-    status: 'running'
-  });
+  if (!freshEmulatorState) {
+    throw new Error('Could not read emulator state');
+  }
+
+  const [testStateResult, emulatorStateResult] = await Promise.all([
+    fwriteTestState(bootConfig.testConfig.id, {
+      ...testState,
+      status: 'running'
+    }),
+    fwriteEmulatorState(bootConfig.testConfig.id, {
+      ...freshEmulatorState,
+      status: 'running'
+    }),
+    fwriteAgentState(testId, { ...agentState, status: 'running' })
+  ]);
+  
   if (!testStateResult) {
     throw new Error('Could not update test state to running');
   }
-
-  emulatorState = await freadEmulatorState(bootConfig.testConfig.id);
-  if (!emulatorState) {
-    throw new Error('Could not read emulator state');
-  }
-  const emulatorStateResult = await fwriteEmulatorState(bootConfig.testConfig.id, {
-    ...emulatorState!,
-    status: 'running'
-  });
+  
   if (!emulatorStateResult) {
     throw new Error('Could not update emulator state to running');
   }
-
-  await fwriteAgentState(testId, { ...agentState, status: 'running' });
 
   await agent.runBenchmark();
 
@@ -112,6 +116,6 @@ try {
   if (apiService && bootConfig) {
     await apiService.endTest(bootConfig.testConfig.id);
   }
-  
+
   process.exit(1);
 }
