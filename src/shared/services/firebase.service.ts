@@ -107,12 +107,13 @@ export class FirebaseService {
           query = query.where(...condition);
         });
       }
+      
       const querySnapshot = await query.get();
       const documentsWithId = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
-      console.log(`[Firebase] Got document(s): ${JSON.stringify(documentsWithId)}`)
+      console.log(`[Firebase] Got ${documentsWithId.length} document(s) from query`);
       return documentsWithId;
     } else {
       const doc = await ref.get();

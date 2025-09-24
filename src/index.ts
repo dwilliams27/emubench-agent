@@ -5,8 +5,7 @@ import { EmuBootConfig, EmuEmulatorState, EmuSharedTestState } from "@/shared/ty
 import { configDotenv } from "dotenv";
 import { LoggerService } from "@/services/logger.service";
 import { formatError } from "@/shared/utils/error";
-import { freadBootConfig, freadEmulatorState, freadSharedTestState, freadTestState, fwriteAgentState, fwriteEmulatorState, fwriteTestState } from "@/shared/services/resource-locator.service";
-import { AGENT_STATE_ID, genId } from "@/shared/utils/id";
+import { freadAgentState, freadBootConfig, freadEmulatorState, freadSharedTestState, freadTestState, fwriteAgentState, fwriteEmulatorState, fwriteTestState } from "@/shared/services/resource-locator.service";
 
 configDotenv();
 
@@ -16,14 +15,11 @@ const testId = process.env.TEST_ID;
 
 let apiService: ApiService | null = null;
 let bootConfig: EmuBootConfig | null = null;
-let agentState = { id: genId(AGENT_STATE_ID), status: 'booting' as const };
 
 try {
   if (!authToken || !testPath || !testId) {
     throw new Error('Missing required environment variables');
   }
-
-  await fwriteAgentState(testId, agentState);
 
   bootConfig = await freadBootConfig(testId);
   if (!bootConfig) {
@@ -71,15 +67,13 @@ try {
     logger
   );
 
-  const [testState, freshEmulatorState] = await Promise.all([
+  const [agentState, testState, freshEmulatorState] = await Promise.all([
+    freadAgentState(bootConfig.testConfig.id),
     freadTestState(bootConfig.testConfig.id),
     freadEmulatorState(bootConfig.testConfig.id)
   ]);
-  if (!testState) {
-    throw new Error('Could not read test state');
-  }
-  if (!freshEmulatorState) {
-    throw new Error('Could not read emulator state');
+  if (!agentState || !testState || !freshEmulatorState) {
+    throw new Error('Could not read state');
   }
 
   const [testStateResult, emulatorStateResult] = await Promise.all([
@@ -111,7 +105,10 @@ try {
   console.error(`Test failed: ${formatError(error)}`);
 
   if (testId) {
-    await fwriteAgentState(testId, { ...agentState, status: 'error' });
+    const state = await freadTestState(testId);
+    if (state) {
+      await fwriteAgentState(testId, { ...state, status: 'error' });
+    }
   }
   if (apiService && bootConfig) {
     await apiService.endTest(bootConfig.testConfig.id);
