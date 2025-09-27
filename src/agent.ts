@@ -10,8 +10,10 @@ import { generateText, GenerateTextResult, ToolSet } from 'ai';
 import { ApiService } from '@/services/api.service';
 import { emuEvaluateCondition } from '@/shared/conditions/evaluate';
 import { formatError } from '@/shared/utils/error';
-import { genId, LOG_BLOCK_ID } from '@/shared/utils/id';
-import { freadTestState, fwriteTestState } from '@/shared/services/resource-locator.service';
+import { genId, HISTORY_ATOM_ID, HISTORY_SLICE_ID, LOG_BLOCK_ID } from '@/shared/utils/id';
+import { freadTestState, fwriteTestRun, fwriteTestState } from '@/shared/services/resource-locator.service';
+import { EmuHistorySlice, EmuTestResult, EmuTestRun } from '@/shared/types/test-run';
+import { EmuConditionPrimitiveResult } from '@/shared/conditions/types';
 
 export class EmuAgent {
   private agentConfig: EmuAgentConfig;
@@ -171,11 +173,6 @@ export class EmuAgent {
     });
   }
 
-  async getGameState() {
-    // TODO
-    return {};
-  }
-
   buildTaskPrompt(): string {
     return `
 <game_context>${this.agentConfig.gameContext}</game_context>
@@ -237,7 +234,7 @@ export class EmuAgent {
     return result;
   }
 
-  async checkTaskCompletion(): Promise<boolean> {
+  evaluateTestCondition(): EmuConditionPrimitiveResult {
     try {
       const condition = this.bootConfig.goalConfig.condition;
       for (const key in condition.inputs) {
@@ -246,17 +243,12 @@ export class EmuAgent {
       }
       const result = emuEvaluateCondition(condition);
       console.log(`----- Condition evaluation result: ${result} -----`);
+
+      return result;
     } catch (error) {
       console.error('Error evaluating condition:', formatError(error));
       return false;
     }
-    // TODO: Return actual condition evaluation
-    return false;
-  }
-
-  generateBenchmarkResult(history: any[]): BenchmarkResult {
-    // TODO
-    return { success: true };
   }
 
   async logTurn(turn: EmuTurn) {
@@ -274,6 +266,68 @@ export class EmuAgent {
       true
     );
   }
+
+  turnsToTestHistory(turns: EmuTurn[]): EmuHistorySlice[] {
+    return turns.map(turn => ({
+      id: genId(HISTORY_SLICE_ID),
+      turn: turn.iteration,
+      images: turn.logBlock.logs
+        .filter(log => log.metadata.type === 'tool-call' && log.metadata.screenshotName)
+        .map(log => ({
+          id: genId(HISTORY_ATOM_ID),
+          eventTimestamp: new Date(log.metadata.timestamp),
+          type: 'screenshot',
+          screenshotName: log.metadata.screenshotName
+        })),
+      agentLogs: turn.logBlock.logs
+        .filter(log => log.metadata.type === 'message')
+        .map(log => ({
+          id: genId(HISTORY_ATOM_ID),
+          eventTimestamp: new Date(log.metadata.timestamp),
+          type: 'log',
+          log
+        })),
+      // TODO: Memory watch history
+      memoryWatches: [],
+      // memoryWatches: turn.logBlock.logs
+      //   .filter(log => log.metadata.type === 'tool-call' && (log.metadata.endStateMemWatchValues || log.metadata.contextMemWatchValues))
+      //   .map(log => ({
+      //     id: genId(HISTORY_ATOM_ID),
+      //     eventTimestamp: new Date(log.metadata.timestamp),
+      //     type: 'memory-watch',
+      //     memoryWatch: {
+      //       contextMemWatchValues: log.metadata.contextMemWatchValues,
+      //       endStateMemWatchValues: log.metadata.endStateMemWatchValues
+      //     }
+      //   }))
+    }));
+  }
+
+  async recordTestRun(testHistory: EmuTurn[], errorDetails?: string) {
+    const conditionPrimitiveResult = this.evaluateTestCondition();
+    let conditionResult: 'passed' | 'failed' | 'error' = !!conditionPrimitiveResult ? 'passed' : 'failed';
+    if (errorDetails) {
+      conditionResult = 'error';
+    }
+    const result: EmuTestResult = {
+      emuCondition: this.bootConfig.goalConfig.condition,
+      conditionResult,
+      conditionPrimitiveResult,
+      errorDetails: errorDetails || ''
+    };
+
+    const testRun: EmuTestRun = {
+      id: this.bootConfig.testConfig.id,
+      history: this.turnsToTestHistory(testHistory),
+      bootConfig: this.bootConfig,
+      result
+    };
+
+    let success = await fwriteTestRun(testRun);
+    if (!success) {
+      this.logger.log(EmuLogNamespace.DEV, `FAILED TO WRITE TEST RUN`);
+    }
+  }
   
   async runBenchmark(): Promise<boolean> {
     this.logger.log(EmuLogNamespace.DEV, 'Starting benchmark...');
@@ -282,38 +336,42 @@ export class EmuAgent {
     const history: EmuTurn[] = [];
     const tools = getTools(this.emulationService);
     
-    this.mostRecentScreenshot = await this.loadScreenshot('0');
+    try {
+      this.mostRecentScreenshot = await this.loadScreenshot('0');
     
-    while (iteration < this.agentConfig.maxIterations) {
-      this.logger.log(EmuLogNamespace.DEV, `Iteration ${iteration}/${this.agentConfig.maxIterations}`);
-      
-      const gameState = await this.getGameState();
-      const prompt = this.buildContextualPrompt(history);
+      while (iteration < this.agentConfig.maxIterations) {
+        this.logger.log(EmuLogNamespace.DEV, `Iteration ${iteration}/${this.agentConfig.maxIterations}`);
+        
+        const prompt = this.buildContextualPrompt(history);
 
-      this.logger.log(EmuLogNamespace.DEV, `------ Iteration ${iteration} ------`);
-      const response = await this.callLlm(prompt, tools);
-      this.logger.log(EmuLogNamespace.DEV, `------LLM Response: ${response.text}------`);
+        this.logger.log(EmuLogNamespace.DEV, `------ Iteration ${iteration} ------`);
+        const response = await this.callLlm(prompt, tools);
+        this.logger.log(EmuLogNamespace.DEV, `------ LLM Response: ${response.text} ------`);
 
-      const logBlock = await this.handleLlmResponse(response, iteration);
-      const turn: EmuTurn = {
-        iteration,
-        logBlock,
+        const logBlock = await this.handleLlmResponse(response, iteration);
+        const turn: EmuTurn = {
+          iteration,
+          logBlock,
+        }
+        history.push(turn);
+        await this.logTurn(turn);
+        
+        const isComplete = this.evaluateTestCondition();
+        if (isComplete) {
+          this.logger.log(EmuLogNamespace.DEV, `Condition met! Test complete`);
+          break;
+        }
+
+        iteration++;
       }
-      history.push(turn);
-      await this.logTurn(turn);
-      
-      // Check if task completed
-      const isComplete = await this.checkTaskCompletion();
-      if (isComplete) break;
+      this.logger.log(EmuLogNamespace.DEV, `Benchmark completed after ${iteration + 1} iterations`);
 
-      iteration++;
+      await this.recordTestRun(history);
+    } catch (error) {
+      this.logger.log(EmuLogNamespace.DEV, `Benchmark failed: ${formatError(error)}`);
+      await this.recordTestRun(history, formatError(error));
+      throw error;
     }
-    this.logger.log(EmuLogNamespace.DEV, `Benchmark completed after ${iteration + 1} iterations`);
-    
-    // TODO: Put result into firebase
-    // const result = this.generateBenchmarkResult(history);
-    // const resultFilePath = path.join(this.testStatePath, 'result.json');
-    // writeFileSync(resultFilePath, JSON.stringify(result, null, 2));
 
     return true;
   }
