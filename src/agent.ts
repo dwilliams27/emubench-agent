@@ -237,9 +237,14 @@ export class EmuAgent {
   evaluateTestCondition(): EmuConditionPrimitiveResult {
     try {
       const condition = this.bootConfig.goalConfig.condition;
+      console.log('----- Evaluating condition -----');
+      console.log('currentContextMemWatches:');
+      console.log(this.currentContextMemWatches)
+      console.log('input raw values:');
       for (const key in condition.inputs) {
         const input = condition.inputs[key];
         input.rawValue = this.currentContextMemWatches[input.name] || input.rawValue;
+        console.log(input.name, input.rawValue);
       }
       const result = emuEvaluateCondition(condition);
       console.log(`----- Condition evaluation result: ${result} -----`);
