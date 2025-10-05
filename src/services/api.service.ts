@@ -5,16 +5,13 @@ export class ApiService {
   private axiosInstance: AxiosInstance;
   private screenshotCache: Record<string, string> = {};
 
-  constructor(url: string, authToken: string) {
+  constructor(url: string) {
     this.axiosInstance = axios.create({
       baseURL: url,
-      headers: {
-        Authorization: `Bearer ${authToken}`
-      }
     });
   }
 
-  async endTest(testId: string) {
+  async endTest(testId: string, authToken: string) {
     try {
       console.log(`[Api] Ending test`);
       const response = await this.axiosInstance.post(
@@ -22,8 +19,9 @@ export class ApiService {
         { testId },
         {
           headers: {
-            'Content-Type': 'application/json'
-          } 
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`
+          }
         }
       );
       console.log(`[Api] Test successfuly ended`);
@@ -35,7 +33,7 @@ export class ApiService {
     }
   }
 
-  async attemptTokenExchange(testId: string, exchangeToken: string | undefined) {
+  async attemptTokenExchange(testId: string, authToken: string, exchangeToken: string | undefined) {
     try {
       console.log(`[Api] Attempting token exchange`);
       const response = await this.axiosInstance.post(
@@ -43,7 +41,8 @@ export class ApiService {
         { exchangeToken },
         {
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`
           } 
         }
       );
@@ -58,14 +57,15 @@ export class ApiService {
     }
   }
 
-  async fetchScreenshots(testId: string): Promise<Record<string, string> | null> {
+  async fetchScreenshots(testId: string, authToken: string): Promise<Record<string, string> | null> {
     try {
       console.log(`[Api] Fetching screenshots`);
       const response = await this.axiosInstance.get(
         `/test-orx/tests/${testId}/screenshots`,
         {
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`
           } 
         }
       );

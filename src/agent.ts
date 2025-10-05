@@ -1,7 +1,6 @@
 import { EmulationService } from '@/services/emulation.service';
 import { LoggerService } from '@/services/logger.service';
 import { getTools } from '@/tools';
-import { BenchmarkResult } from '@/types/tools';
 import { EmuAgentConfig, EmuBootConfig, EmuTestConfig, EmuLogBlock, EmuTurn, EmuLlmMessageContentItem, EmuLogNamespace } from '@/shared/types';
 import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
@@ -28,7 +27,8 @@ export class EmuAgent {
     private bootConfig: EmuBootConfig,
     private emulationService: EmulationService,
     private apiService: ApiService,
-    private logger: LoggerService
+    private logger: LoggerService,
+    private authToken: string
   ) {
     this.agentConfig = bootConfig.agentConfig;
     this.testConfig = bootConfig.testConfig;
@@ -62,7 +62,7 @@ export class EmuAgent {
     let retries = 2;
     while (!imageData && retries > 0) {
       try {
-        const screenshotData = await this.apiService.fetchScreenshots(this.bootConfig.testConfig.id);
+        const screenshotData = await this.apiService.fetchScreenshots(this.bootConfig.testConfig.id, this.authToken);
         if (!screenshotData) {
           console.log(`No screenshots found, trying again`);
           continue;

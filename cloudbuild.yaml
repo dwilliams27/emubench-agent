@@ -11,9 +11,25 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/emubench-agent:latest']
 
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'services'
+      - 'update'
+      - 'emubench-agent'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/emubench-agent'
+      - '--region'
+      - 'us-central1'
+
+# Specify the service account for Cloud Build
+serviceAccount: 'projects/$PROJECT_ID/serviceAccounts/emubench-cloud-build-sa@$PROJECT_ID.iam.gserviceaccount.com'
+
 options:
   machineType: 'E2_HIGHCPU_8'
   diskSizeGb: 100
+  logging: CLOUD_LOGGING_ONLY
 
 timeout: '7200s'  # 2 hours
 

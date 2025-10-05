@@ -1,118 +1,62 @@
-import { EmuAgent } from "@/agent";
-import { EmulationService } from "@/services/emulation.service";
 import { ApiService } from "@/services/api.service";
-import { EmuBootConfig, EmuEmulatorState, EmuSharedTestState } from "@/shared/types";
 import { configDotenv } from "dotenv";
-import { LoggerService } from "@/services/logger.service";
-import { formatError } from "@/shared/utils/error";
-import { freadAgentState, freadBootConfig, freadEmulatorState, freadSharedTestState, freadTestState, fwriteAgentState, fwriteEmulatorState, fwriteTestState } from "@/shared/services/resource-locator.service";
+import { freadAgentJobs } from "@/shared/services/resource-locator.service";
+import express from 'express';
+import { JobService } from "@/services/job.service";
+import { EmuAgentJob } from "@/shared/types/agent";
 
 configDotenv();
 
-const authToken = process.env.AUTH_TOKEN;
-const testPath = process.env.TEST_PATH;
-const testId = process.env.TEST_ID;
+const apiService = new ApiService("https://api.emubench.com");
+const jobService = new JobService();
 
-let apiService: ApiService | null = null;
-let bootConfig: EmuBootConfig | null = null;
-
-try {
-  if (!authToken || !testPath || !testId) {
-    throw new Error('Missing required environment variables');
-  }
-
-  bootConfig = await freadBootConfig(testId);
-  if (!bootConfig) {
-    throw new Error('Could not read boot config');
-  }
-
-  let testReady = false;
-  let emulatorState: EmuEmulatorState | null = null;
-  let sharedState: EmuSharedTestState | null = null;
-  let googleToken;
-  apiService = new ApiService("https://api.emubench.com", authToken);
-  while (!testReady) {
-    try {
-      emulatorState = await freadEmulatorState(bootConfig.testConfig.id);
-      sharedState = await freadSharedTestState(bootConfig.testConfig.id);
-      if (!emulatorState || !sharedState) {
-        throw new Error('Could not read emulator state or shared state');
-      }
-
-      googleToken = await apiService.attemptTokenExchange(bootConfig.testConfig.id, sharedState.exchangeToken);
-      const status = emulatorState.status;
-      if (status === 'emulator-ready' && sharedState.emulatorUri && googleToken) {
-        console.log('Test ready!');
-        testReady = true;
-      } else {
-        console.log(`Waiting for test to be ready; current status: ${status}`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      }
-    } catch (error) {
-      console.error(`Test file not found yet... cause: ${formatError(error)}`);
-      await new Promise(resolve => setTimeout(resolve, 3000));
+const app = express();
+app.use(express.json());
+app.use(express.raw({ type: 'application/protobuf' }));
+app.get('/', (req, res) => res.status(200).send('OK'));
+app.post('/', async (req, res) => {
+  try {
+    const eventType = req.headers['ce-type'];
+    const documentPath = req.headers['ce-subject'];
+    const eventId = req.headers['ce-id'];
+    const eventTime = req.headers['ce-time'];
+    
+    console.log('[Base] Event received:', {
+      type: eventType,
+      path: documentPath,
+      id: eventId,
+      time: eventTime
+    });
+    
+    const docId = documentPath?.toString().split('/').pop();
+    if (!docId) {
+      throw new Error('No document ID found in path');
     }
-  }
 
-  if (!sharedState?.emulatorUri) {
-    throw new Error('Could not get emulator uri');
-  }
-
-  const emulationService = new EmulationService(sharedState.emulatorUri, googleToken);
-  const logger = new LoggerService(bootConfig.testConfig.id);
-  const agent = new EmuAgent(
-    bootConfig,
-    emulationService,
-    apiService,
-    logger
-  );
-
-  const [agentState, testState, freshEmulatorState] = await Promise.all([
-    freadAgentState(bootConfig.testConfig.id),
-    freadTestState(bootConfig.testConfig.id),
-    freadEmulatorState(bootConfig.testConfig.id)
-  ]);
-  if (!agentState || !testState || !freshEmulatorState) {
-    throw new Error('Could not read state');
-  }
-
-  const [testStateResult, emulatorStateResult] = await Promise.all([
-    fwriteTestState(bootConfig.testConfig.id, {
-      ...testState,
-      status: 'running'
-    }),
-    fwriteEmulatorState(bootConfig.testConfig.id, {
-      ...freshEmulatorState,
-      status: 'running'
-    }),
-    fwriteAgentState(testId, { ...agentState, status: 'running' })
-  ]);
-  
-  if (!testStateResult) {
-    throw new Error('Could not update test state to running');
-  }
-  
-  if (!emulatorStateResult) {
-    throw new Error('Could not update emulator state to running');
-  }
-
-  await agent.runBenchmark();
-
-  await apiService.endTest(bootConfig.testConfig.id);
-  console.log('Test finished');
-  process.exit(0);
-} catch (error) {
-  console.error(`Test failed: ${formatError(error)}`);
-
-  if (testId) {
-    const state = await freadTestState(testId);
-    if (state) {
-      await fwriteAgentState(testId, { ...state, status: 'error' });
+    const jobResult = await freadAgentJobs([docId]);
+    if (!jobResult || !jobResult[0]) {
+      throw new Error('No job found for document ID');
     }
+    const job = jobResult[0] as EmuAgentJob;
+    
+    await jobService.handleIncomingJob(job, apiService);
+    
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('Error processing event:', error);
+    res.status(500).send('Error');
   }
-  if (apiService && bootConfig) {
-    await apiService.endTest(bootConfig.testConfig.id);
-  }
+});
 
-  process.exit(1);
-}
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'EMUBENCH_AGENT_404',
+    message: 'Endpoint not found in emubench-agent service',
+    path: req.path,
+    method: req.method
+  });
+});
+
+app.listen(process.env.PORT || 8080, () => {
+  console.log(`🧠 Agent listening on port ${process.env.PORT || 8080}`);
+});
