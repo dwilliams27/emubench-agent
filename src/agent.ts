@@ -325,7 +325,8 @@ export class EmuAgent {
       id: this.bootConfig.testConfig.id,
       history: this.turnsToTestHistory(testHistory),
       bootConfig: this.bootConfig,
-      result
+      result,
+      experimentId: this.bootConfig.experimentId
     };
 
     let success = await fwriteTestRun(testRun);
