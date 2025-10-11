@@ -57,7 +57,7 @@ export class ApiService {
     }
   }
 
-  async fetchScreenshots(testId: string, authToken: string): Promise<Record<string, string> | null> {
+  async fetchScreenshots(testId: string, authToken: string): Promise<{ [key: string]: { url: string; data: string } | null } | null> {
     try {
       console.log(`[Api] Fetching screenshots`);
       const response = await this.axiosInstance.get(
@@ -70,12 +70,13 @@ export class ApiService {
         }
       );
       if (response.data.screenshots) {
+        const result: { [key: string]: { url: string; data: string } | null } = {};
         // Fetch each screenshot from the URLs provided
         console.log(`[Api] Fetched ${Object.keys(response.data.screenshots).length} screenshots`);
         for (const key of Object.keys(response.data.screenshots)) {
           const screenshotUrl = response.data.screenshots[key];
           if (this.screenshotCache[screenshotUrl]) {
-            response.data.screenshots[key] = this.screenshotCache[screenshotUrl];
+            result[key] = { url: screenshotUrl, data: this.screenshotCache[screenshotUrl] };
             continue;
           }
           try {
@@ -87,14 +88,14 @@ export class ApiService {
             });
             const base64Screenshot = `data:image/png;base64,${Buffer.from(screenshotResponse.data, 'binary').toString('base64')}`;
             this.screenshotCache[screenshotUrl] = base64Screenshot;
-            response.data.screenshots[key] = base64Screenshot;
+            result[key] = { url: screenshotUrl, data: base64Screenshot };
           } catch (screenshotError) {
             console.error(`[Api] Error fetching screenshot ${key}: ${formatError(screenshotError)}`);
-            response.data.screenshots[key] = null;
+            result[key] = null;
           }
         }
         console.log(`[Api] Successfully fetched screenshots`);
-        return response.data.screenshots;
+        return result;
       }
       console.error(`[Api] No screenshots found in response`);
       return null;

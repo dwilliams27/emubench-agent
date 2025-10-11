@@ -55,24 +55,20 @@ export class EmuAgent {
 
   async loadScreenshot(name: string) {
     const filename = `${name}.png`;
-    if (this.screenshotCache[filename]) {
-      return this.screenshotCache[filename];
-    }
-    let imageData;
+    let image: { url: string; data: string } | null = null;
     let retries = 2;
-    while (!imageData && retries > 0) {
+    while (!image && retries > 0) {
       try {
-        const screenshotData = await this.apiService.fetchScreenshots(this.bootConfig.testConfig.id, this.authToken);
-        if (!screenshotData) {
+        const screenshots = await this.apiService.fetchScreenshots(this.bootConfig.testConfig.id, this.authToken);
+        if (!screenshots) {
           console.log(`No screenshots found, trying again`);
           continue;
         }
-        this.screenshotCache = { ...this.screenshotCache, ...screenshotData };
-        if (!screenshotData[filename]) {
+        if (!screenshots[filename]) {
           console.log(`Screenshot ${filename} not found in cache, trying again`);
           continue;
         }
-        imageData = screenshotData[filename];
+        image = screenshots[filename];
       } catch (error) {
         retries -= 1;
         // Wait in case screenshot doesnt have public url yet
@@ -80,7 +76,7 @@ export class EmuAgent {
       }
     }
 
-    return imageData;
+    return image;
   }
 
   async handleLlmResponse(llmResult: GenerateTextResult<ToolSet, unknown>, iteration: number): Promise<EmuLogBlock> {
@@ -108,20 +104,21 @@ export class EmuAgent {
         }
       });
       if (toolResult.result?.screenshot) {
-        const imageData = await this.loadScreenshot(toolResult.result.screenshot);
-        if (imageData) {
+        const image = await this.loadScreenshot(toolResult.result.screenshot);
+        if (image) {
           // @ts-expect-error
-          results.logs[results.logs.length - 1].metadata.screenshotData = imageData;
-          // TODO: Awkward
-          results.logs[results.logs.length - 1].metadata.screenshotName = `${parseInt(toolResult.result.screenshot) - 1}.png`;
+          results.logs[results.logs.length - 1].metadata.screenshotData = image.data;
+          results.logs[results.logs.length - 1].metadata.screenshotName = image.url;
 
-          this.mostRecentScreenshot = imageData;
+          this.mostRecentScreenshot = image.data;
         } else {
           console.warn(`[Agent] Screenshot ${toolResult.result.screenshot} not found`);
         }
       }
       if (toolResult.result?.endStateMemWatchValues || toolResult.result?.contextMemWatchValues) {
         this.currentContextMemWatches = toolResult.result?.contextMemWatchValues;
+        results.logs[results.logs.length - 1].metadata.contextMemWatchValues = toolResult.result?.contextMemWatchValues;
+        results.logs[results.logs.length - 1].metadata.endStateMemWatchValues = toolResult.result?.endStateMemWatchValues;
 
         // TODO: Partial updates
         const oldState = await freadTestState(this.bootConfig.testConfig.id);
@@ -292,19 +289,17 @@ export class EmuAgent {
           type: 'log',
           log
         })),
-      // TODO: Memory watch history
-      memoryWatches: [],
-      // memoryWatches: turn.logBlock.logs
-      //   .filter(log => log.metadata.type === 'tool-call' && (log.metadata.endStateMemWatchValues || log.metadata.contextMemWatchValues))
-      //   .map(log => ({
-      //     id: genId(HISTORY_ATOM_ID),
-      //     eventTimestamp: new Date(log.metadata.timestamp),
-      //     type: 'memory-watch',
-      //     memoryWatch: {
-      //       contextMemWatchValues: log.metadata.contextMemWatchValues,
-      //       endStateMemWatchValues: log.metadata.endStateMemWatchValues
-      //     }
-      //   }))
+      memoryWatches: turn.logBlock.logs
+        .filter(log => log.metadata.type === 'tool-call' && (log.metadata.endStateMemWatchValues || log.metadata.contextMemWatchValues))
+        .map(log => ({
+          id: genId(HISTORY_ATOM_ID),
+          eventTimestamp: new Date(log.metadata.timestamp),
+          type: 'memory-watch',
+          memoryWatch: {
+            contextMemWatchValues: log.metadata.contextMemWatchValues,
+            endStateMemWatchValues: log.metadata.endStateMemWatchValues
+          }
+        }))
     }));
   }
 
@@ -343,7 +338,7 @@ export class EmuAgent {
     const tools = getTools(this.emulationService);
     
     try {
-      this.mostRecentScreenshot = await this.loadScreenshot('0');
+      this.mostRecentScreenshot = (await this.loadScreenshot('0'))?.data;
     
       while (iteration < this.agentConfig.maxIterations) {
         this.logger.log(EmuLogNamespace.DEV, `Iteration ${iteration}/${this.agentConfig.maxIterations}`);

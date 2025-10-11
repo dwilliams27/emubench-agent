@@ -10,6 +10,9 @@ export interface EmuLogItem {
 
     toolName?: string;
     toolPayload?: any;
+
+    contextMemWatchValues?: Record<string, string>;
+    endStateMemWatchValues?: Record<string, string>;
   };
 };
 
