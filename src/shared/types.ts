@@ -43,11 +43,6 @@ export interface EmuTestConfig {
   endStateMemWatches: Record<string, EmuMemoryWatch>;
 };
 
-export interface EmuTask {
-  name: string;
-  description: string;
-};
-
 export interface EmuAgentConfig {
   systemPrompt: string;
   gameContext: string;
@@ -55,7 +50,8 @@ export interface EmuAgentConfig {
   model: string;
   maxIterations: number;
   temperature: number;
-  task: EmuTask;
+  taskName: string;
+  taskDescription: string;
 };
 
 export interface EmuGoalConfig {
@@ -146,3 +142,7 @@ export class EmuError extends Error {
 };
 
 export const EMU_TRACE_HEADER = 'x-emubench-trace-id';
+
+export type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+};

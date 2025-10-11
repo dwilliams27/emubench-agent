@@ -40,6 +40,9 @@ export class JobService {
           if (!emulatorState || !sharedState) {
             throw new Error('Could not read emulator state or shared state');
           }
+          if (!sharedState.exchangeToken) {
+            throw new Error('No exchange token yet');
+          }
 
           googleToken = await apiService.attemptTokenExchange(bootConfig.testConfig.id, authToken, sharedState.exchangeToken);
           const status = emulatorState.status;

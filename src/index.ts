@@ -39,13 +39,11 @@ app.post('/', async (req, res) => {
     }
     const job = jobResult[0] as EmuAgentJob;
     
-    await jobService.handleIncomingJob(job, apiService);
-    
-    res.status(200).send('OK');
+    jobService.handleIncomingJob(job, apiService);
   } catch (error) {
     console.error('Error processing event:', error);
-    res.status(500).send('Error');
   }
+  res.status(200).send('OK');
 });
 
 app.use((req, res) => {
