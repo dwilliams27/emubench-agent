@@ -1,4 +1,4 @@
-import { DeepPartial, EmuBootConfig } from "@/shared/types";
+import { DeepPartial, EmuAgentState, EmuBootConfig, EmuEmulatorState } from "@/shared/types";
 
 export interface EmuExperiment {
   id: string;
@@ -34,4 +34,9 @@ export interface EmuSetupExperimentRequest {
 
 export interface EmuSetupExperimentResponse {
   experimentId: string;
+}
+
+export interface EmuTestSummary {
+  agentState: EmuAgentState;
+  emulatorState: EmuEmulatorState;
 }

@@ -61,7 +61,7 @@ export class JobService {
           }
         } catch (error) {
           console.error(`Test file not found yet... cause: ${formatError(error)}`);
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          await new Promise(resolve => setTimeout(resolve, 10_000));
         }
       }
 

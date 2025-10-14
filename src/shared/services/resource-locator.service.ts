@@ -52,12 +52,13 @@ function pathParamsToString(pathParams: FirebasePathParam[]) {
 async function readObjectFromFirebase<T extends FEmuBaseObject>(options: EmuReadOptions): Promise<(T | EmuFirebaseTransactionFunction)[] | null> {
   const { pathParams, where, atomic } = options;
   const objectPath = pathParamsToString(pathParams);
-  if (pathParams[-1]?.docIds) {
-    const cacheKey = generateCacheKey(pathParams);
-    if (shouldUseCache(pathParams[-1]?.collection) && FB_CACHE[cacheKey]) {
-      console.log(`[RecL] Reading object from cache for ${objectPath}`);
-      return FB_CACHE[cacheKey] as T[];
-    }
+  const lastPathParam = pathParams[pathParams.length - 1];
+  if (lastPathParam?.docIds) {
+    // const cacheKey = generateCacheKey(pathParams);
+    // if (shouldUseCache(lastPathParam?.collection) && FB_CACHE[cacheKey]) {
+    //   console.log(`[RecL] Reading object from cache for ${objectPath}`);
+    //   return FB_CACHE[cacheKey] as T[];
+    // }
   }
 
   try {
@@ -74,15 +75,15 @@ async function readObjectFromFirebase<T extends FEmuBaseObject>(options: EmuRead
 
 async function writeObjectToFirebase(options: EmuWriteOptions): Promise<boolean> {
   const { pathParams, payload } = options;
-  throwIfCantWrite(pathParams[-1]?.collection);
+  const lastPathParam = pathParams[pathParams.length - 1];
   try {
     const result = await firebaseService.write(options);
-    if (shouldUseCache(pathParams[-1]?.collection)) {
-      payload.forEach((p) => {
-        const cacheKey = generateCacheKey([...pathParams.slice(0, -1), { collection: pathParams[-1].collection, docIds: [p.id] }]);
-        FB_CACHE[cacheKey] = payload;
-      });
-    }
+    // if (shouldUseCache(lastPathParam?.collection)) {
+    //   payload.forEach((p) => {
+    //     const cacheKey = generateCacheKey([...pathParams.slice(0, -1), { collection: lastPathParam.collection, docIds: [p.id] }]);
+    //     FB_CACHE[cacheKey] = payload;
+    //   });
+    // }
     return true;
   } catch (error) {
     const objectPath = pathParamsToString(pathParams);

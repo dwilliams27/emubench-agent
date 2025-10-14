@@ -4,6 +4,7 @@ import { EmuBootConfig, EmuLogItem } from "@/shared/types";
 export interface EmuTestRun {
   id: string;
   experimentId: string | null;
+  experimentRunGroupId: string | null;
   history: EmuHistorySlice[];
   bootConfig: EmuBootConfig;
   result: EmuTestResult;

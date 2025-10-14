@@ -100,11 +100,11 @@ export class EmuAgent {
           type: 'tool-call',
           timestamp,
           toolName: toolResult.toolName,
-          toolPayload: toolResult.args
+          toolPayload: toolResult.input
         }
       });
-      if (toolResult.result?.screenshot) {
-        const image = await this.loadScreenshot(toolResult.result.screenshot);
+      if (toolResult.output?.screenshot) {
+        const image = await this.loadScreenshot(toolResult.output.screenshot);
         if (image) {
           // @ts-expect-error
           results.logs[results.logs.length - 1].metadata.screenshotData = image.data;
@@ -112,13 +112,13 @@ export class EmuAgent {
 
           this.mostRecentScreenshot = image.data;
         } else {
-          console.warn(`[Agent] Screenshot ${toolResult.result.screenshot} not found`);
+          console.warn(`[Agent] Screenshot ${toolResult.output.screenshot} not found`);
         }
       }
-      if (toolResult.result?.endStateMemWatchValues || toolResult.result?.contextMemWatchValues) {
-        this.currentContextMemWatches = toolResult.result?.contextMemWatchValues;
-        results.logs[results.logs.length - 1].metadata.contextMemWatchValues = toolResult.result?.contextMemWatchValues;
-        results.logs[results.logs.length - 1].metadata.endStateMemWatchValues = toolResult.result?.endStateMemWatchValues;
+      if (toolResult.output?.endStateMemWatchValues || toolResult.output?.contextMemWatchValues) {
+        this.currentContextMemWatches = toolResult.output?.contextMemWatchValues;
+        results.logs[results.logs.length - 1].metadata.contextMemWatchValues = toolResult.output?.contextMemWatchValues;
+        results.logs[results.logs.length - 1].metadata.endStateMemWatchValues = toolResult.output?.endStateMemWatchValues;
 
         // TODO: Partial updates
         const oldState = await freadTestState(this.bootConfig.testConfig.id);
@@ -132,8 +132,8 @@ export class EmuAgent {
           stateHistory: {
             ...oldState.stateHistory,
             [iteration]: {
-              contextMemWatchValues: toolResult.result?.contextMemWatchValues,
-              endStateMemWatchValues: toolResult.result?.endStateMemWatchValues
+              contextMemWatchValues: toolResult.output?.contextMemWatchValues,
+              endStateMemWatchValues: toolResult.output?.endStateMemWatchValues
             }
           }
         });
@@ -150,24 +150,44 @@ export class EmuAgent {
     this.logger.log(EmuLogNamespace.DEV, 'Calling LLM...');
     
     const model = this.getModel(this.agentConfig.llmProvider, this.agentConfig.model);
+    const timeoutMs = 45_000;
+    let retries = 3;
+    let lastError: any = null;
+
+    while (retries > 0) {
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`LLM call timed out after ${timeoutMs}ms`)), timeoutMs);
+      });
+      const generatePromise = generateText({
+        model,
+        messages: [
+          {
+            role: 'system',
+            content: this.agentConfig.systemPrompt
+          },
+          {
+            role: 'user',
+            // Huh
+            content: prompt as any
+          }
+        ],
+        tools,
+        maxOutputTokens: 4000,
+        temperature: this.agentConfig.temperature
+      });
+      
+      try {
+        const result = await Promise.race([generatePromise, timeoutPromise]) as ReturnType<typeof generateText>;
+        this.logger.log(EmuLogNamespace.DEV, 'LLM call completed successfully');
+        return result;
+      } catch (error) {
+        this.logger.log(EmuLogNamespace.DEV, `LLM call failed: ${formatError(error)}`);
+        lastError = error;
+      }
+      retries -= 1;
+    }
     
-    return await generateText({
-      model,
-      messages: [
-        {
-          role: 'system',
-          content: this.agentConfig.systemPrompt
-        },
-        {
-          role: 'user',
-          // Huh
-          content: prompt as any
-        }
-      ],
-      tools,
-      maxTokens: 4000,
-      temperature: this.agentConfig.temperature
-    });
+    throw lastError || new Error('LLM call failed after multiple attempts');
   }
 
   buildTaskPrompt(): string {
@@ -321,7 +341,8 @@ export class EmuAgent {
       history: this.turnsToTestHistory(testHistory),
       bootConfig: this.bootConfig,
       result,
-      experimentId: this.bootConfig.experimentId
+      experimentId: this.bootConfig.experimentId,
+      experimentRunGroupId: this.bootConfig.experimentRunGroupId
     };
 
     let success = await fwriteTestRun(testRun);

@@ -4,12 +4,14 @@ import { directionToStickPosition } from "@/utils";
 import { tool } from "ai";
 import { z } from "zod";
 
+type ControllerInput = z.infer<typeof ControllerInputSchema>;
+
 export function getTools(emulationService: EmulationService) {
   return {
     sendControllerInput: tool({
       description: 'Press buttons, move sticks, or press triggers on the gamecube controller',
-      parameters: ControllerInputSchema,
-      execute: async ({ actions, duration }) => {
+      inputSchema: ControllerInputSchema,
+      execute: async ({ actions, duration }: ControllerInput) => {
         const ipcRequest = {
           connected: true,
           ...((actions.buttons || actions.triggers) ? { buttons: { ...actions.buttons, ...actions.triggers } } : {}),
@@ -25,10 +27,10 @@ export function getTools(emulationService: EmulationService) {
     }),
     wait: tool({
       description: 'Wait for a specific number of frames',
-      parameters: z.object({
+      inputSchema: z.object({
         frames: z.number().min(1).max(240).describe("The number of frames to wait for"),
       }),
-      execute: async ({ frames }) => {
+      execute: async ({ frames }: { frames: number }) => {
         const ipcRequest = {
           connected: true,
           frames,
