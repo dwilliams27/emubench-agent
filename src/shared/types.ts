@@ -1,5 +1,5 @@
 import { EmuCondition } from "@/shared/conditions/types";
-import { EmuTestRun } from "@/shared/types/test-run";
+import { EmuTestResult } from "@/shared/types/test-result";
 
 export interface EmuLogItem {
   text: string;
@@ -101,7 +101,7 @@ export interface EmuGetTraceLogsResponse {
 };
 
 export interface EmuGetTestHistoryResponse {
-  testRun: EmuTestRun;
+  testResult: EmuTestResult;
 }
 
 export interface EmuSetupExperimentResponse {

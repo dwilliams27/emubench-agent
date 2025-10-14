@@ -10,8 +10,8 @@ import { ApiService } from '@/services/api.service';
 import { emuEvaluateCondition } from '@/shared/conditions/evaluate';
 import { formatError } from '@/shared/utils/error';
 import { genId, HISTORY_ATOM_ID, HISTORY_SLICE_ID, LOG_BLOCK_ID } from '@/shared/utils/id';
-import { freadTestState, fwriteTestRun, fwriteTestState } from '@/shared/services/resource-locator.service';
-import { EmuHistorySlice, EmuTestResult, EmuTestRun } from '@/shared/types/test-run';
+import { freadTestState, fwriteTestResult, fwriteTestState } from '@/shared/services/resource-locator.service';
+import { EmuHistorySlice, EmuTestResult, EmuTestResultData } from '@/shared/types/test-result';
 import { EmuConditionPrimitiveResult } from '@/shared/conditions/types';
 
 export class EmuAgent {
@@ -323,31 +323,31 @@ export class EmuAgent {
     }));
   }
 
-  async recordTestRun(testHistory: EmuTurn[], errorDetails?: string) {
+  async recordTestResult(testHistory: EmuTurn[], errorDetails?: string) {
     const conditionPrimitiveResult = this.evaluateTestCondition();
     let conditionResult: 'passed' | 'failed' | 'error' = !!conditionPrimitiveResult ? 'passed' : 'failed';
     if (errorDetails) {
       conditionResult = 'error';
     }
-    const result: EmuTestResult = {
+    const data: EmuTestResultData = {
       emuCondition: this.bootConfig.goalConfig.condition,
       conditionResult,
       conditionPrimitiveResult,
       errorDetails: errorDetails || ''
     };
 
-    const testRun: EmuTestRun = {
+    const testResult: EmuTestResult = {
       id: this.bootConfig.testConfig.id,
       history: this.turnsToTestHistory(testHistory),
       bootConfig: this.bootConfig,
-      result,
+      data,
       experimentId: this.bootConfig.experimentId,
       experimentRunGroupId: this.bootConfig.experimentRunGroupId
     };
 
-    let success = await fwriteTestRun(testRun);
+    let success = await fwriteTestResult(testResult);
     if (!success) {
-      this.logger.log(EmuLogNamespace.DEV, `FAILED TO WRITE TEST RUN`);
+      this.logger.log(EmuLogNamespace.DEV, `FAILED TO WRITE TEST RESULT`);
     }
   }
   
@@ -388,10 +388,10 @@ export class EmuAgent {
       }
       this.logger.log(EmuLogNamespace.DEV, `Benchmark completed after ${iteration + 1} iterations`);
 
-      await this.recordTestRun(history);
+      await this.recordTestResult(history);
     } catch (error) {
       this.logger.log(EmuLogNamespace.DEV, `Benchmark failed: ${formatError(error)}`);
-      await this.recordTestRun(history, formatError(error));
+      await this.recordTestResult(history, formatError(error));
       throw error;
     }
 
