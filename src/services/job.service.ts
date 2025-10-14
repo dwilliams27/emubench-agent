@@ -2,9 +2,9 @@ import { EmuAgent } from "@/agent";
 import { ApiService } from "@/services/api.service";
 import { EmulationService } from "@/services/emulation.service";
 import { LoggerService } from "@/services/logger.service";
-import { freadBootConfig, freadEmulatorState, freadSharedTestState, freadAgentState, freadTestState, fwriteTestState, fwriteEmulatorState, fwriteAgentState, fwriteAgentJobs } from "@/shared/services/resource-locator.service";
-import { EmuBootConfig, EmuEmulatorState, EmuSharedTestState } from "@/shared/types";
+import { freadTest, fwriteAgentJobs, fwriteTestFields } from "@/shared/services/resource-locator.service";
 import { EmuAgentJob } from "@/shared/types/agent";
+import { EmuTest } from "@/shared/types/test";
 import { formatError } from "@/shared/utils/error";
 
 export class JobService {
@@ -15,38 +15,38 @@ export class JobService {
     const testPath = job.testPath;
     const testId = job.testId;
 
-    let bootConfig: EmuBootConfig | null = null;
+    let test: EmuTest | null = null;
 
     try {
       if (!authToken || !testPath || !testId) {
         throw new Error('Missing required environment variables');
       }
 
-      bootConfig = await freadBootConfig(testId);
-      if (!bootConfig) {
+      test = await freadTest(testId);
+      if (!test?.bootConfig) {
         throw new Error('Could not read boot config');
       }
 
       let testReady = false;
-      let emulatorState: EmuEmulatorState | null = null;
-      let sharedState: EmuSharedTestState | null = null;
       let googleToken;
       let retries = 20;
       
       while (!testReady && retries-- > 0) {
         try {
-          emulatorState = await freadEmulatorState(bootConfig.testConfig.id);
-          sharedState = await freadSharedTestState(bootConfig.testConfig.id);
-          if (!emulatorState || !sharedState) {
+          test = await freadTest(testId);
+          if (!test) {
+            throw new Error('Could not read test');
+          }
+          if (!test.emulatorState || !test.sharedState) {
             throw new Error('Could not read emulator state or shared state');
           }
-          if (!sharedState.exchangeToken) {
+          if (!test.sharedState.exchangeToken) {
             throw new Error('No exchange token yet');
           }
 
-          googleToken = await apiService.attemptTokenExchange(bootConfig.testConfig.id, authToken, sharedState.exchangeToken);
-          const status = emulatorState.status;
-          if (status === 'emulator-ready' && sharedState.emulatorUri && googleToken) {
+          googleToken = await apiService.attemptTokenExchange(test.bootConfig.testConfig.id, authToken, test.sharedState.exchangeToken);
+          const status = test.emulatorState.status;
+          if (status === 'emulator-ready' && test.sharedState.emulatorUri && googleToken) {
             console.log('Test ready!');
             testReady = true;
           } else {
@@ -65,90 +65,56 @@ export class JobService {
         }
       }
 
+      if (!test) {
+        throw new Error('Could not read test');
+      }
+
       if (!testReady) {
         throw new Error('Test not ready in time');
       }
 
-      if (!sharedState?.emulatorUri) {
+      if (!test.sharedState?.emulatorUri) {
         throw new Error('Could not get emulator uri');
       }
 
-      const emulationService = new EmulationService(sharedState.emulatorUri, googleToken);
-      const logger = new LoggerService(bootConfig.testConfig.id);
+      const emulationService = new EmulationService(test.sharedState.emulatorUri, googleToken);
+      const logger = new LoggerService(test.bootConfig.testConfig.id);
       const agent = new EmuAgent(
-        bootConfig,
+        test.bootConfig,
         emulationService,
         apiService,
         logger,
         authToken
       );
 
-      const [agentState, testState, freshEmulatorState] = await Promise.all([
-        freadAgentState(bootConfig.testConfig.id),
-        freadTestState(bootConfig.testConfig.id),
-        freadEmulatorState(bootConfig.testConfig.id)
-      ]);
-      if (!agentState || !testState || !freshEmulatorState) {
-        throw new Error('Could not read state');
-      }
-
-      const [testStateResult, emulatorStateResult] = await Promise.all([
-        fwriteTestState(bootConfig.testConfig.id, {
-          ...testState,
-          status: 'running'
-        }),
-        fwriteEmulatorState(bootConfig.testConfig.id, {
-          ...freshEmulatorState,
-          status: 'running'
-        }),
-        fwriteAgentState(testId, { ...agentState, status: 'running' })
-      ]);
+      const result = await fwriteTestFields(testId, {
+        'testState.status': 'running',
+        'emulatorState.status': 'running',
+        'agentState.status': 'running'
+      });
       
-      if (!testStateResult) {
-        throw new Error('Could not update test state to running');
-      }
-      
-      if (!emulatorStateResult) {
-        throw new Error('Could not update emulator state to running');
+      if (!result) {
+        throw new Error('Could not update test to running');
       }
     
-      await this.runJob(agent, apiService, bootConfig, authToken);
+      await agent.runBenchmark();
+      await apiService.endTest(test.bootConfig.testConfig.id, authToken);
       await fwriteAgentJobs([{ ...job, status: "completed" }], { update: true });
     } catch (error) {
       console.error(`Test setup failed: ${formatError(error)}`);
 
       if (testId) {
-        const state = await freadTestState(testId);
-        if (state) {
-          await fwriteAgentState(testId, { ...state, status: 'error' });
-        }
+        const result = await fwriteTestFields(testId, {
+          'agentState.status': 'error',
+        });
       }
-      if (apiService && bootConfig) {
-        await apiService.endTest(bootConfig.testConfig.id, authToken);
+      if (test?.bootConfig) {
+        await apiService.endTest(test.bootConfig.testConfig.id, authToken);
+      } else {
+        console.error('Could not end test');
       }
 
       await fwriteAgentJobs([{ ...job, status: 'error', error: formatError(error) }], { update: true });
-    }
-  }
-
-  async runJob(agent: EmuAgent, apiService: ApiService, bootConfig: EmuBootConfig, authToken: string) {
-    try {
-      await agent.runBenchmark();
-      await apiService.endTest(bootConfig.testConfig.id, authToken);
-      console.log('Test finished');
-    } catch (error) {
-      console.error(`Test failed: ${formatError(error)}`);
-  
-      const testId = bootConfig.testConfig.id;
-      if (testId) {
-        const state = await freadTestState(testId);
-        if (state) {
-          await fwriteAgentState(testId, { ...state, status: 'error' });
-        }
-      }
-      if (apiService && bootConfig) {
-        await apiService.endTest(bootConfig.testConfig.id, authToken);
-      }
     }
   }
 }

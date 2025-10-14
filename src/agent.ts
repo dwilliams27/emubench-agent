@@ -10,7 +10,7 @@ import { ApiService } from '@/services/api.service';
 import { emuEvaluateCondition } from '@/shared/conditions/evaluate';
 import { formatError } from '@/shared/utils/error';
 import { genId, HISTORY_ATOM_ID, HISTORY_SLICE_ID, LOG_BLOCK_ID } from '@/shared/utils/id';
-import { freadTestState, fwriteTestResult, fwriteTestState } from '@/shared/services/resource-locator.service';
+import { fwriteTestFields, fwriteTestResult } from '@/shared/services/resource-locator.service';
 import { EmuHistorySlice, EmuTestResult, EmuTestResultData } from '@/shared/types/test-result';
 import { EmuConditionPrimitiveResult } from '@/shared/conditions/types';
 
@@ -120,23 +120,13 @@ export class EmuAgent {
         results.logs[results.logs.length - 1].metadata.contextMemWatchValues = toolResult.output?.contextMemWatchValues;
         results.logs[results.logs.length - 1].metadata.endStateMemWatchValues = toolResult.output?.endStateMemWatchValues;
 
-        // TODO: Partial updates
-        const oldState = await freadTestState(this.bootConfig.testConfig.id);
-        if (!oldState) {
-          console.error('[Agent] Could not read old test state');
-          continue;
-        }
-
-        const result = await fwriteTestState(this.bootConfig.testConfig.id, {
-          ...oldState,
-          stateHistory: {
-            ...oldState.stateHistory,
-            [iteration]: {
-              contextMemWatchValues: toolResult.output?.contextMemWatchValues,
-              endStateMemWatchValues: toolResult.output?.endStateMemWatchValues
-            }
-          }
+        const result = await fwriteTestFields(this.bootConfig.testConfig.id, {
+          [`testState.stateHistory.${iteration}`]: {
+            contextMemWatchValues: toolResult.output?.contextMemWatchValues,
+            endStateMemWatchValues: toolResult.output?.endStateMemWatchValues
+          },
         });
+
         if (!result) {
           console.error('[Agent] Could not write updated test state');
         }

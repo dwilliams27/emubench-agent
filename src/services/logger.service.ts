@@ -1,4 +1,4 @@
-import { freadAgentLogs, freadDevLogs, fwriteAgentLogs, fwriteDevLogs } from '@/shared/services/resource-locator.service';
+import { freadDevLogs, fwriteDevLogs, freadAgentLogs, fwriteAgentLogs } from '@/shared/services/resource-locator.service';
 import { EmuLogBlock, EmuLogNamespace } from '@/shared/types';
 
 export class LoggerService {
@@ -29,6 +29,15 @@ export class LoggerService {
     if (this.logBuffer[namespace].length === 0) return;
 
     const logsToWrite = this.logBuffer[namespace].splice(0);
-    await this.firestoreCollectionMap[namespace].write(this.testId, logsToWrite);
+    switch (namespace) {
+      case EmuLogNamespace.DEV: {
+        await this.firestoreCollectionMap[namespace].write(this.testId, logsToWrite);
+      }
+      case EmuLogNamespace.AGENT:
+        break;
+      default:
+        throw new Error('Invalid namespace for logs');
+    }
+    
   }
 }
