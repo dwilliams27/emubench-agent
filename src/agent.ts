@@ -190,8 +190,8 @@ export class EmuAgent {
 
   turnsToLlmContext(turns: EmuTurn[]): EmuLlmMessageContentItem[] {
     const result: EmuLlmMessageContentItem[] = [];
-    turns.forEach(turn => {
-      turn.logBlock.logs.forEach(log => {
+    for (let i = this.bootConfig.agentConfig.contextHistorySize; i >= 0; i--) {
+      turns[i].logBlock.logs.forEach(log => {
         switch (log.metadata.type) {
           case ('message'): {
             result.push({
@@ -217,8 +217,8 @@ export class EmuAgent {
             break;
           }
         }
-      })
-    });
+      });
+    }
     return result;
   }
 
