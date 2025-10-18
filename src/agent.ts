@@ -190,8 +190,9 @@ export class EmuAgent {
 
   turnsToLlmContext(turns: EmuTurn[]): EmuLlmMessageContentItem[] {
     const result: EmuLlmMessageContentItem[] = [];
-    for (let i = this.bootConfig.agentConfig.contextHistorySize; i >= 0; i--) {
-      turns[i].logBlock.logs.forEach(log => {
+    const iterations = Math.min(turns.length, this.bootConfig.agentConfig.contextHistorySize);
+    for (let i = 0; i < iterations; i++) {
+      turns[turns.length - 1 - i].logBlock.logs.forEach(log => {
         switch (log.metadata.type) {
           case ('message'): {
             result.push({
@@ -318,6 +319,9 @@ export class EmuAgent {
     let conditionResult: 'passed' | 'failed' | 'error' = !!conditionPrimitiveResult ? 'passed' : 'failed';
     if (errorDetails) {
       conditionResult = 'error';
+    }
+    for (const key of Object.keys(this.bootConfig.goalConfig.condition.inputs)) {
+      this.bootConfig.goalConfig.condition.inputs[key].rawValue = this.bootConfig.goalConfig.condition.inputs[key].rawValue ?? "N/A";
     }
     const data: EmuTestResultData = {
       emuCondition: this.bootConfig.goalConfig.condition,
