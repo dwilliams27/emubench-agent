@@ -121,7 +121,7 @@ export class EmuAgent {
         results.logs[results.logs.length - 1].metadata.endStateMemWatchValues = toolResult.output?.endStateMemWatchValues;
 
         const result = await fwriteTestFields(this.bootConfig.testConfig.id, {
-          [`testState.stateHistory.${iteration}`]: {
+          [`testState.stateHistory.turn_${iteration}`]: {
             contextMemWatchValues: toolResult.output?.contextMemWatchValues,
             endStateMemWatchValues: toolResult.output?.endStateMemWatchValues
           },
@@ -252,6 +252,8 @@ export class EmuAgent {
       for (const key in condition.inputs) {
         const input = condition.inputs[key];
         input.rawValue = this.currentContextMemWatches[input.name] || input.rawValue;
+        // TODO: Why needed
+        input.parsedValue = undefined;
         console.log(input.name, input.rawValue);
       }
       const result = emuEvaluateCondition(condition);
