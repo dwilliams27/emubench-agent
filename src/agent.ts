@@ -341,6 +341,12 @@ export class EmuAgent {
       experimentRunGroupId: this.bootConfig.experimentRunGroupId
     };
 
+    await fwriteTestFields(
+      this.bootConfig.testConfig.id,
+      {
+        'result': data,
+      }
+    );
     let success = await fwriteTestResult(testResult);
     if (!success) {
       this.logger.log(EmuLogNamespace.DEV, `FAILED TO WRITE TEST RESULT`);
