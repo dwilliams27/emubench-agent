@@ -326,7 +326,6 @@ export class EmuAgent {
       this.bootConfig.goalConfig.condition.inputs[key].rawValue = this.bootConfig.goalConfig.condition.inputs[key].rawValue ?? "N/A";
     }
     const data: EmuTestResultData = {
-      emuCondition: this.bootConfig.goalConfig.condition,
       conditionResult,
       conditionPrimitiveResult,
       errorDetails: errorDetails || ''
