@@ -1,7 +1,7 @@
 import { EmulationService } from '@/services/emulation.service';
 import { LoggerService } from '@/services/logger.service';
 import { getTools } from '@/tools';
-import { EmuAgentConfig, EmuBootConfig, EmuTestConfig, EmuLogBlock, EmuTurn, EmuLlmMessageContentItem, EmuLogNamespace } from '@/shared/types';
+import { EmuAgentConfig, EmuBootConfig, EmuEmulatorConfig, EmuLogBlock, EmuTurn, EmuLlmMessageContentItem, EmuLogNamespace } from '@/shared/types';
 import { anthropic } from '@ai-sdk/anthropic';
 import { google } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
@@ -16,7 +16,7 @@ import { EmuConditionPrimitiveResult } from '@/shared/conditions/types';
 
 export class EmuAgent {
   private agentConfig: EmuAgentConfig;
-  private testConfig: EmuTestConfig;
+  private emulatorConfig: EmuEmulatorConfig;
 
   private mostRecentScreenshot?: string;
   private screenshotCache: Record<string, string> = {};
@@ -31,7 +31,7 @@ export class EmuAgent {
     private authToken: string
   ) {
     this.agentConfig = bootConfig.agentConfig;
-    this.testConfig = bootConfig.testConfig;
+    this.emulatorConfig = bootConfig.emulatorConfig;
 
     if (!this.agentConfig.systemPrompt) {
       throw new Error('System prompt is required');
@@ -59,7 +59,7 @@ export class EmuAgent {
     let retries = 2;
     while (!image && retries > 0) {
       try {
-        const screenshots = await this.apiService.fetchScreenshots(this.bootConfig.testConfig.id, this.authToken);
+        const screenshots = await this.apiService.fetchScreenshots(this.bootConfig.emulatorConfig.id, this.authToken);
         if (!screenshots) {
           console.log(`No screenshots found, trying again`);
           continue;
@@ -120,7 +120,7 @@ export class EmuAgent {
         results.logs[results.logs.length - 1].metadata.contextMemWatchValues = toolResult.output?.contextMemWatchValues;
         results.logs[results.logs.length - 1].metadata.endStateMemWatchValues = toolResult.output?.endStateMemWatchValues;
 
-        const result = await fwriteTestFields(this.bootConfig.testConfig.id, {
+        const result = await fwriteTestFields(this.bootConfig.emulatorConfig.id, {
           [`testState.stateHistory.turn_${iteration}`]: {
             contextMemWatchValues: toolResult.output?.contextMemWatchValues,
             endStateMemWatchValues: toolResult.output?.endStateMemWatchValues
@@ -332,7 +332,7 @@ export class EmuAgent {
     };
 
     const testResult: EmuTestResult = {
-      id: this.bootConfig.testConfig.id,
+      id: this.bootConfig.emulatorConfig.id,
       history: this.turnsToTestHistory(testHistory),
       bootConfig: this.bootConfig,
       data,
@@ -341,7 +341,7 @@ export class EmuAgent {
     };
 
     await fwriteTestFields(
-      this.bootConfig.testConfig.id,
+      this.bootConfig.emulatorConfig.id,
       {
         'result': data,
       }

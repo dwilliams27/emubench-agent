@@ -11,7 +11,7 @@
       "description": "Take a screenshot and describe everything you see."
     }
   },
-  "testConfig": {
+  "emulatorConfig": {
     "id": "tst-4a391857df15465d",
     "gameId": "G4AEE9",
     "platform": "gamecube",
