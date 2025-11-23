@@ -60,12 +60,16 @@ export const ControllerInputSchema = z.object({
     }).optional().describe("Specify button states (true=pressed, false=released). Omit buttons to leave them unchanged."),
 
     mainStick: z.object({
-      direction: z.enum(["up", "right", "down", "left"]).optional().describe("The direction to move the stick in (up, right, down, left)."),
-    }).optional().describe("Specify main analog stick position. Omit to leave unchanged."),
+      x: z.number().min(0).max(255).optional().describe("The X position of the main analog stick (0-255. 0 is LEFT, 128 is CENTER, and 255 is RIGHT)."),
+      y: z.number().min(0).max(255).optional().describe("The Y position of the main analog stick (0-255, 0 is DOWN, 128 is CENTER, and 255 is UP)."),
+      // direction: z.enum(["up", "right", "down", "left"]).optional().describe("The direction to move the stick in (up, right, down, left)."),
+    }).optional().describe("Specify main analog stick position.You must specify x and y for a specific position. Omit to leave unchanged."),
 
     cStick: z.object({
+      x: z.number().min(0).max(255).optional().describe("The X position of the c stick (0-255. 0 is LEFT, 128 is CENTER, and 255 is RIGHT)."),
+      y: z.number().min(0).max(255).optional().describe("The Y position of the c stick (0-255, 0 is DOWN, 128 is CENTER, and 255 is UP)."),
       direction: z.enum(["up", "right", "down", "left"]).optional().describe("The direction to move the stick in (up, right, down, left)."),
-    }).optional().describe("Specify C-stick position. Omit to leave unchanged."),
+    }).optional().describe("Specify C-stick position. You must specify x and y for a specific position. Omit to leave unchanged."),
 
     triggers: z.object({
         l: z.boolean().optional().describe("Press/release the Left Trigger"),

@@ -15,8 +15,14 @@ export function getTools(emulationService: EmulationService) {
         const ipcRequest = {
           connected: true,
           ...((actions.buttons || actions.triggers) ? { buttons: { ...actions.buttons, ...actions.triggers } } : {}),
-          ...(actions.mainStick?.direction ? { mainStick: directionToStickPosition(actions.mainStick?.direction) } : {}),
-          ...(actions.cStick?.direction ? { cStick: directionToStickPosition(actions.cStick?.direction) } : {}),
+          ...(
+            (actions.mainStick?.x || actions.mainStick?.y) 
+            ? { mainStick: directionToStickPosition({ x: actions.mainStick?.x, y: actions.mainStick?.y }) } 
+            : {}),
+          ...(
+            actions.cStick?.direction
+            ? { cStick: directionToStickPosition({ direction: actions.cStick?.direction, x: actions.cStick?.x, y: actions.cStick?.y }) }
+            : {}),
           frames: duration,
         }
         

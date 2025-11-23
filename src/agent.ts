@@ -204,7 +204,7 @@ export class EmuAgent {
           case ('tool-call'): {
             result.push({
               type: 'text',
-              text: `Tool: ${log.metadata.toolName} called with payload ${JSON.stringify(log.metadata.toolPayload)}`
+              text: `<informational>Tool Information: ${log.metadata.toolName} was called with payload ${JSON.stringify(log.metadata.toolPayload)}</informational>`
             });
 
             // @ts-expect-error
@@ -237,7 +237,7 @@ export class EmuAgent {
       result.push({ type: 'image', image: this.mostRecentScreenshot });
     }
     result.push({ type: 'text', text: "</most_recent_screenshot>" });
-    result.push({ type: 'text', text: "Decide what to do to best proceed towards your goal" });
+    result.push({ type: 'text', text: "Remember, the tool calls in the <action_history> section are just for information, its not the format you should answer in." });
 
     return result;
   }
