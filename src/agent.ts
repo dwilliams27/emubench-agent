@@ -237,7 +237,7 @@ export class EmuAgent {
       result.push({ type: 'image', image: this.mostRecentScreenshot });
     }
     result.push({ type: 'text', text: "</most_recent_screenshot>" });
-    result.push({ type: 'text', text: "Remember, the tool calls in the <action_history> section are just for information, its not the format you should answer in." });
+    result.push({ type: 'text', text: "Call the sendControllerInput or wait tool and give a summary of your action and intent." });
 
     return result;
   }
