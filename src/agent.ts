@@ -23,6 +23,15 @@ export class EmuAgent {
 
   private currentContextMemWatches: Record<string, string> = {};
 
+  private longTermMemory: string = '';
+
+  private tokenUsage = {
+    input: 0,
+    output: 0,
+    reasoning: 0,
+    total: 0
+  };
+
   constructor(
     private bootConfig: EmuBootConfig,
     private emulationService: EmulationService,
@@ -59,7 +68,7 @@ export class EmuAgent {
     let retries = 2;
     while (!image && retries > 0) {
       try {
-        const screenshots = await this.apiService.fetchScreenshots(this.bootConfig.emulatorConfig.id, this.authToken);
+        const screenshots = await this.apiService.fetchScreenshots(this.bootConfig.id, this.authToken);
         if (!screenshots) {
           console.log(`No screenshots found, trying again`);
           continue;
@@ -92,6 +101,12 @@ export class EmuAgent {
         }
       }]
     };
+
+    this.tokenUsage.input += llmResult.usage.inputTokens || 0;
+    this.tokenUsage.output += llmResult.usage.outputTokens || 0;
+    this.tokenUsage.reasoning += llmResult.usage.reasoningTokens || 0;
+    this.tokenUsage.total += llmResult.usage.totalTokens || 0;
+
     // TODO: I'm lazy
     for (const toolResult of (llmResult.toolResults as any)) {
       results.logs.push({
@@ -120,7 +135,7 @@ export class EmuAgent {
         results.logs[results.logs.length - 1].metadata.contextMemWatchValues = toolResult.output?.contextMemWatchValues;
         results.logs[results.logs.length - 1].metadata.endStateMemWatchValues = toolResult.output?.endStateMemWatchValues;
 
-        const result = await fwriteTestFields(this.bootConfig.emulatorConfig.id, {
+        const result = await fwriteTestFields(this.bootConfig.id, {
           [`testState.stateHistory.turn_${iteration}`]: {
             contextMemWatchValues: toolResult.output?.contextMemWatchValues,
             endStateMemWatchValues: toolResult.output?.endStateMemWatchValues
@@ -128,9 +143,25 @@ export class EmuAgent {
         });
 
         if (!result) {
-          console.error('[Agent] Could not write updated test state');
+          console.error(`[Agent] ${this.bootConfig.id}: Could not write updated test state`);
         }
       }
+      if (toolResult.recordMemory) {
+        this.longTermMemory = `${this.longTermMemory}\n<thought>${toolResult.recordMemory}</thought>`;
+      }
+    }
+
+    // Update firstore
+    const result = await fwriteTestFields(this.bootConfig.id, {
+      [`agentState.inputTokenCount`]: this.tokenUsage.input,
+      [`agentState.outputTokenCount`]: this.tokenUsage.output,
+      [`agentState.reasoningTokenCount`]: this.tokenUsage.reasoning,
+      [`agentState.totalTokenCount`]: this.tokenUsage.total,
+      [`agentState.memory.longTermNotes`]: this.longTermMemory
+    });
+
+    if (!result) {
+      console.error(`[Agent] ${this.bootConfig.id}: Could not write updated tokens and memory`);
     }
 
     return results;
@@ -190,7 +221,7 @@ export class EmuAgent {
 
   turnsToLlmContext(turns: EmuTurn[]): EmuLlmMessageContentItem[] {
     const result: EmuLlmMessageContentItem[] = [];
-    const iterations = Math.min(turns.length, this.bootConfig.agentConfig.contextHistorySize);
+    const iterations = Math.min(turns.length, this.bootConfig.agentConfig.turnMemoryLength);
     for (let i = 0; i < iterations; i++) {
       turns[turns.length - 1 - i].logBlock.logs.forEach(log => {
         switch (log.metadata.type) {
@@ -224,45 +255,85 @@ export class EmuAgent {
   }
 
   buildContextualPrompt(turns: EmuTurn[]): EmuLlmMessageContentItem[] {
-    const taskPrompt = this.buildTaskPrompt();
-    const actionHistory = this.turnsToLlmContext(turns);
-    const result: EmuLlmMessageContentItem[] = [
-      { type: 'text', text: `<action_history>` },
-      ...actionHistory,
-      { type: 'text', text: `</action_history>` },
-      { type: 'text', text: taskPrompt },
-      { type: 'text', text: "<most_recent_screenshot>" }
-    ];
-    if (this.mostRecentScreenshot) {
-      result.push({ type: 'image', image: this.mostRecentScreenshot });
+    const result: EmuLlmMessageContentItem[] = [];
+    
+    if (this.bootConfig.agentConfig.turnMemoryLength > 0) {
+      const actionHistory = this.turnsToLlmContext(turns);
+      result.push(
+        { type: 'text', text: `<recent_actions>` },
+        ...actionHistory,
+        { type: 'text', text: `</recent_actions>` }
+      );
     }
-    result.push({ type: 'text', text: "</most_recent_screenshot>" });
-    result.push({ type: 'text', text: "Call the sendControllerInput or wait tool and give a summary of your action and intent." });
+    if (this.bootConfig.agentConfig.longTermMemory) {
+      result.push(
+        { type: 'text', text: `<memory>${this.longTermMemory}</memory>` },
+      );
+    }
+
+    const taskPrompt = this.buildTaskPrompt();
+    result.push(
+      { type: 'text', text: taskPrompt },
+    );
+    
+    if (this.mostRecentScreenshot) {
+      result.push(
+        { type: 'text', text: "<most_recent_screenshot>" },
+        { type: 'image', image: this.mostRecentScreenshot },
+        { type: 'text', text: "</most_recent_screenshot>" }
+      );
+    }
 
     return result;
   }
 
-  evaluateTestCondition(): EmuConditionPrimitiveResult {
+  evaluateTestCondition(): { successResult: EmuConditionPrimitiveResult, failResult: EmuConditionPrimitiveResult } {
     try {
-      const condition = this.bootConfig.goalConfig.condition;
-      console.log('----- Evaluating condition -----');
+      const successCondition = this.bootConfig.goalConfig.successCondition;
+      const failCondition = this.bootConfig.goalConfig.failCondition;
+      console.log('----- Evaluating conditions -----');
       console.log('currentContextMemWatches:');
       console.log(this.currentContextMemWatches)
-      console.log('input raw values:');
-      for (const key in condition.inputs) {
-        const input = condition.inputs[key];
-        input.rawValue = this.currentContextMemWatches[input.name] || input.rawValue;
-        // TODO: Why needed
-        input.parsedValue = undefined;
-        console.log(input.name, input.rawValue);
-      }
-      const result = emuEvaluateCondition(condition);
-      console.log(`----- Condition evaluation result: ${result} -----`);
 
-      return result;
+      console.log('input raw values:');
+
+      let successResult: EmuConditionPrimitiveResult = false;
+      let failResult: EmuConditionPrimitiveResult = false;
+
+      if (successCondition) {
+        for (const key in successCondition.inputs) {
+          const input = successCondition.inputs[key];
+          input.rawValue = this.currentContextMemWatches[input.name] || input.rawValue;
+          // TODO: Why needed
+          input.parsedValue = undefined;
+          console.log(input.name, input.rawValue);
+        }
+        successResult = emuEvaluateCondition(successCondition);
+      }
+      
+
+      
+      if (failCondition) {
+        for (const key in failCondition.inputs) {
+          const input = failCondition.inputs[key];
+          input.rawValue = this.currentContextMemWatches[input.name] || input.rawValue;
+          // TODO: Why needed
+          input.parsedValue = undefined;
+          console.log(input.name, input.rawValue);
+        }
+        failResult = emuEvaluateCondition(failCondition);
+      }
+
+      console.log(`----- Success Condition evaluation result: ${successResult} -----`);
+      console.log(`----- Fail Condition evaluation result: ${failResult} -----`);
+
+      return {
+        successResult,
+        failResult
+      };
     } catch (error) {
       console.error('Error evaluating condition:', formatError(error));
-      return false;
+      return { successResult: false, failResult: true };
     }
   }
 
@@ -317,22 +388,26 @@ export class EmuAgent {
   }
 
   async recordTestResult(testHistory: EmuTurn[], errorDetails?: string) {
-    const conditionPrimitiveResult = this.evaluateTestCondition();
-    let conditionResult: 'passed' | 'failed' | 'error' = !!conditionPrimitiveResult ? 'passed' : 'failed';
+    const conditionResults = this.evaluateTestCondition();
+
+    let conditionResult: 'passed' | 'failed' | 'error' = !!conditionResults.successResult && !conditionResults.failResult ? 'passed' : 'failed';
     if (errorDetails) {
       conditionResult = 'error';
     }
-    for (const key of Object.keys(this.bootConfig.goalConfig.condition.inputs)) {
-      this.bootConfig.goalConfig.condition.inputs[key].rawValue = this.bootConfig.goalConfig.condition.inputs[key].rawValue ?? "N/A";
+    if (this.bootConfig.goalConfig.successCondition) {
+      for (const key of Object.keys(this.bootConfig.goalConfig.successCondition.inputs)) {
+        this.bootConfig.goalConfig.successCondition.inputs[key].rawValue = this.bootConfig.goalConfig.successCondition.inputs[key].rawValue ?? "N/A";
+      }
     }
+    
     const data: EmuTestResultData = {
       conditionResult,
-      conditionPrimitiveResult,
+      conditionPrimitiveResult: conditionResults.successResult,
       errorDetails: errorDetails || ''
     };
 
     const testResult: EmuTestResult = {
-      id: this.bootConfig.emulatorConfig.id,
+      id: this.bootConfig.id,
       history: this.turnsToTestHistory(testHistory),
       bootConfig: this.bootConfig,
       data,
@@ -341,7 +416,7 @@ export class EmuAgent {
     };
 
     await fwriteTestFields(
-      this.bootConfig.emulatorConfig.id,
+      this.bootConfig.id,
       {
         'result': data,
       }
@@ -357,7 +432,7 @@ export class EmuAgent {
 
     let iteration = 1;
     const history: EmuTurn[] = [];
-    const tools = getTools(this.emulationService);
+    const tools = getTools(this.bootConfig, this.emulationService);
     
     try {
       this.mostRecentScreenshot = (await this.loadScreenshot('0'))?.data;
@@ -380,8 +455,12 @@ export class EmuAgent {
         await this.logTurn(turn);
         
         const isComplete = this.evaluateTestCondition();
-        if (isComplete) {
+        if (isComplete.successResult) {
           this.logger.log(EmuLogNamespace.DEV, `Condition met! Test complete`);
+          break;
+        }
+        if (isComplete.failResult) {
+          this.logger.log(EmuLogNamespace.DEV, `Fail Condition! Test complete`);
           break;
         }
 

@@ -1,4 +1,6 @@
 import { EmulationService } from "@/services/emulation.service";
+import { freadTest, fwriteTestFields } from "@/shared/services/resource-locator.service";
+import { EmuBootConfig } from "@/shared/types";
 import { ControllerInputSchema } from "@/types/tools";
 import { directionToStickPosition } from "@/utils";
 import { tool } from "ai";
@@ -6,7 +8,7 @@ import { z } from "zod";
 
 type ControllerInput = z.infer<typeof ControllerInputSchema>;
 
-export function getTools(emulationService: EmulationService) {
+export function getTools(bootConfig: EmuBootConfig, emulationService: EmulationService) {
   return {
     sendControllerInput: tool({
       description: 'Press buttons, move sticks, or press triggers on the gamecube controller',
@@ -46,6 +48,17 @@ export function getTools(emulationService: EmulationService) {
 
         return inputResponse;
       }
+    }),
+    ...(bootConfig.agentConfig.longTermMemory && {
+      recordMemory: tool({
+        description: 'Record a long term memory.',
+        inputSchema: z.object({
+          text: z.string(),
+        }),
+        execute: async ({ text }: { text: string }) => {
+          return { recordMemory: text }
+        }
+      })
     })
   };
 }

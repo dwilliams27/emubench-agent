@@ -44,7 +44,7 @@ export class JobService {
             throw new Error('No exchange token yet');
           }
 
-          googleToken = await apiService.attemptTokenExchange(test.bootConfig.emulatorConfig.id, authToken, test.sharedState.exchangeToken);
+          googleToken = await apiService.attemptTokenExchange(test.bootConfig.id, authToken, test.sharedState.exchangeToken);
           const status = test.emulatorState.status;
           if (status === 'emulator-ready' && test.sharedState.emulatorUri && googleToken) {
             console.log('Test ready!');
@@ -78,7 +78,7 @@ export class JobService {
       }
 
       const emulationService = new EmulationService(test.sharedState.emulatorUri, googleToken);
-      const logger = new LoggerService(test.bootConfig.emulatorConfig.id);
+      const logger = new LoggerService(test.bootConfig.id);
       const agent = new EmuAgent(
         test.bootConfig,
         emulationService,
@@ -98,7 +98,7 @@ export class JobService {
       }
     
       await agent.runBenchmark();
-      await apiService.endTest(test.bootConfig.emulatorConfig.id, authToken);
+      await apiService.endTest(test.bootConfig.id, authToken);
       await fwriteAgentJobs([{ ...job, status: "completed" }], { update: true });
     } catch (error) {
       console.error(`Test setup failed: ${formatError(error)}`);
@@ -109,7 +109,7 @@ export class JobService {
         });
       }
       if (test?.bootConfig) {
-        await apiService.endTest(test.bootConfig.emulatorConfig.id, authToken);
+        await apiService.endTest(test.bootConfig.id, authToken);
       } else {
         console.error('Could not end test');
       }
