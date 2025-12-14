@@ -24,7 +24,6 @@ export class EmulationService {
     request: IpcControllerInputRequest,
     controllerPort = 0,
   ): Promise<PostControllerInputResponse | null> {
-    request.connected = true;
     try {
       console.log(`[Emulation] Sending controller input: ${JSON.stringify(request)}`);
       const response = await this.axiosInstance.post(

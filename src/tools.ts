@@ -1,50 +1,26 @@
 import { EmulationService } from "@/services/emulation.service";
-import { freadTest, fwriteTestFields } from "@/shared/services/resource-locator.service";
 import { EmuBootConfig } from "@/shared/types";
-import { ControllerInputSchema } from "@/types/tools";
-import { directionToStickPosition } from "@/utils";
+import { SingleControllerInputSchema, MultipleControllerInputSchema, IpcControllerInputRequest, MultipleControllerInput, SingleControllerInput } from "@/types/tools";
 import { tool } from "ai";
 import { z } from "zod";
 
-type ControllerInput = z.infer<typeof ControllerInputSchema>;
+const SingleInputDescription = `Submit controller input for a specific number of frames (between 2-120).`;
+const MultipleInputDescription = `Submit one or more controller inputs in sequence, each for a specific number of frames (between 2-120).`;
 
 export function getTools(bootConfig: EmuBootConfig, emulationService: EmulationService) {
   return {
     sendControllerInput: tool({
-      description: 'Press buttons, move sticks, or press triggers on the gamecube controller',
-      inputSchema: ControllerInputSchema,
-      execute: async ({ actions, duration }: ControllerInput) => {
-        const ipcRequest = {
-          connected: true,
-          ...((actions.buttons || actions.triggers) ? { buttons: { ...actions.buttons, ...actions.triggers } } : {}),
-          ...(
-            (actions.mainStick?.x || actions.mainStick?.y) 
-            ? { mainStick: directionToStickPosition({ x: actions.mainStick?.x, y: actions.mainStick?.y }) } 
-            : {}),
-          ...(
-            actions.cStick?.direction
-            ? { cStick: directionToStickPosition({ direction: actions.cStick?.direction, x: actions.cStick?.x, y: actions.cStick?.y }) }
-            : {}),
-          frames: duration,
+      description: bootConfig.agentConfig.multiInput ? MultipleInputDescription : SingleInputDescription,
+      inputSchema: bootConfig.agentConfig.multiInput ? MultipleControllerInputSchema : SingleControllerInputSchema,
+      execute: async (options: SingleControllerInput | MultipleControllerInput) => {
+        const payload: IpcControllerInputRequest = { inputs: [] };
+        if (bootConfig.agentConfig.multiInput) {
+          payload.inputs = (options as MultipleControllerInput).inputs;
+        } else {
+          payload.inputs = [(options as SingleControllerInput)];
         }
         
-        const inputResponse = await emulationService.postControllerInput(ipcRequest);
-
-        return inputResponse;
-      }
-    }),
-    wait: tool({
-      description: 'Wait for a specific number of frames',
-      inputSchema: z.object({
-        frames: z.number().min(1).max(240).describe("The number of frames to wait for"),
-      }),
-      execute: async ({ frames }: { frames: number }) => {
-        const ipcRequest = {
-          connected: true,
-          frames,
-        }
-        
-        const inputResponse = await emulationService.postControllerInput(ipcRequest);
+        const inputResponse = await emulationService.postControllerInput(payload);
 
         return inputResponse;
       }

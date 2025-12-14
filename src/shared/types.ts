@@ -61,6 +61,7 @@ export interface EmuAgentConfig {
   taskDescription: string;
   turnMemoryLength: number;
   longTermMemory: boolean;
+  multiInput: boolean;
 };
 
 export interface EmuGoalConfig {
