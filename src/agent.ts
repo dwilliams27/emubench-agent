@@ -19,6 +19,7 @@ export class EmuAgent {
   private emulatorConfig: EmuEmulatorConfig;
 
   private mostRecentScreenshot?: string;
+  private mostRecentReward?: number;
   private screenshotCache: Record<string, string> = {};
 
   private currentContextMemWatches: Record<string, string> = {};
@@ -275,6 +276,15 @@ export class EmuAgent {
     result.push(
       { type: 'text', text: taskPrompt },
     );
+
+    if (this.bootConfig.goalConfig.rewardFunction) {
+      result.push(
+        { type: 'text', text: `<reward_function_description>${this.bootConfig.goalConfig.rewardDescription}</reward_function_description>` },
+      );
+      result.push(
+        { type: 'text', text: `<current_reward>${this.mostRecentReward}</current_reward>` },
+      );
+    }
     
     if (this.mostRecentScreenshot) {
       result.push(
@@ -287,10 +297,11 @@ export class EmuAgent {
     return result;
   }
 
-  evaluateTestCondition(): { successResult: EmuConditionPrimitiveResult, failResult: EmuConditionPrimitiveResult } {
+  evaluateTestCondition(): { successResult: EmuConditionPrimitiveResult, failResult: EmuConditionPrimitiveResult, reward: number | null } {
     try {
       const successCondition = this.bootConfig.goalConfig.successCondition;
       const failCondition = this.bootConfig.goalConfig.failCondition;
+      const rewardFunction = this.bootConfig.goalConfig.rewardFunction;
       console.log('----- Evaluating conditions -----');
       console.log('currentContextMemWatches:');
       console.log(this.currentContextMemWatches)
@@ -299,6 +310,7 @@ export class EmuAgent {
 
       let successResult: EmuConditionPrimitiveResult = false;
       let failResult: EmuConditionPrimitiveResult = false;
+      let reward: number | null = null;
 
       if (successCondition) {
         for (const key in successCondition.inputs) {
@@ -311,8 +323,6 @@ export class EmuAgent {
         successResult = emuEvaluateCondition(successCondition);
       }
       
-
-      
       if (failCondition) {
         for (const key in failCondition.inputs) {
           const input = failCondition.inputs[key];
@@ -324,16 +334,29 @@ export class EmuAgent {
         failResult = emuEvaluateCondition(failCondition);
       }
 
+      if (rewardFunction) {
+        for (const key in rewardFunction.inputs) {
+          const input = rewardFunction.inputs[key];
+          input.rawValue = this.currentContextMemWatches[input.name] || input.rawValue;
+          // TODO: Why needed
+          input.parsedValue = undefined;
+          console.log(input.name, input.rawValue);
+        }
+        reward = emuEvaluateCondition(rewardFunction) as number;
+      }
+
       console.log(`----- Success Condition evaluation result: ${successResult} -----`);
       console.log(`----- Fail Condition evaluation result: ${failResult} -----`);
+      console.log(`----- Reward Function evaluation result: ${reward} -----`);
 
       return {
         successResult,
-        failResult
+        failResult,
+        reward
       };
     } catch (error) {
       console.error('Error evaluating condition:', formatError(error));
-      return { successResult: false, failResult: true };
+      return { successResult: false, failResult: true, reward: null };
     }
   }
 
@@ -403,6 +426,7 @@ export class EmuAgent {
     const data: EmuTestResultData = {
       conditionResult,
       conditionPrimitiveResult: conditionResults.successResult,
+      reward: conditionResults.reward,
       errorDetails: errorDetails || ''
     };
 
@@ -454,14 +478,18 @@ export class EmuAgent {
         history.push(turn);
         await this.logTurn(turn);
         
-        const isComplete = this.evaluateTestCondition();
-        if (isComplete.successResult) {
+        const conditionResult = this.evaluateTestCondition();
+        if (conditionResult.successResult) {
           this.logger.log(EmuLogNamespace.DEV, `Condition met! Test complete`);
           break;
         }
-        if (isComplete.failResult) {
+        if (conditionResult.failResult) {
           this.logger.log(EmuLogNamespace.DEV, `Fail Condition! Test complete`);
           break;
+        }
+        if (conditionResult.reward !== null) {
+          this.mostRecentReward = conditionResult.reward;
+          this.logger.log(EmuLogNamespace.DEV, `Reward updated: ${this.mostRecentReward}`);
         }
 
         iteration++;
