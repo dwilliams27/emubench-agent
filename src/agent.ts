@@ -24,7 +24,7 @@ export class EmuAgent {
 
   private currentContextMemWatches: Record<string, string> = {};
 
-  private longTermMemory: string = '';
+  private longTermMemory: string[] = [];
 
   private tokenUsage = {
     input: 0,
@@ -148,7 +148,7 @@ export class EmuAgent {
         }
       }
       if (toolResult.recordMemory) {
-        this.longTermMemory = `${this.longTermMemory}\n<thought>${toolResult.recordMemory}</thought>`;
+        this.longTermMemory.push(`${this.longTermMemory}\n<thought>${toolResult.recordMemory}</thought>`);
       }
     }
 

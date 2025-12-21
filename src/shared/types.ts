@@ -1,6 +1,6 @@
 import { EmuCondition } from "@/shared/conditions/types";
 import { EmuScreenshot } from "@/shared/types/test";
-import { EmuTestResult } from "@/shared/types/test-result";
+import { EmuTestResult, EmuTestResultData } from "@/shared/types/test-result";
 
 export interface EmuLogItem {
   text: string;
@@ -96,8 +96,8 @@ export interface EmuAgentState {
 };
 
 export interface EmuAgentMemory {
-  longTermNotes: string;
-}
+  longTermNotes: string[];
+};
 
 export interface EmuSharedTestState {
   id: string;
@@ -111,9 +111,11 @@ export interface EmuActiveTestReponse {
   agentLogs?: EmuLogBlock[] | null;
   emulatorState?: EmuEmulatorState | null;
   screenshots?: Record<string, EmuScreenshot>;
+  result?: EmuTestResultData | null;
   currentSuccessCondition?: EmuCondition;
   currentFailCondition?: EmuCondition;
   currentRewardFunction?: EmuCondition;
+  memories: string[];
   bootConfig: EmuBootConfig;
 };
 
